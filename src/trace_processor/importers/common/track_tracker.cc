@@ -105,7 +105,8 @@ TrackId TrackTracker::AddTrack(const tracks::BlueprintBase& blueprint,
                                StringId counter_unit,
                                GlobalArgsTracker::CompactArg* d_args,
                                uint32_t d_size,
-                               const SetArgsCallback& args) {
+                               const SetArgsCallback& args,
+                               std::optional<uint32_t> track_group_id) {
   tables::TrackTable::Row row(name);
   const auto* dims = blueprint.dimension_blueprints.data();
   for (uint32_t i = 0; i < d_size; ++i) {
@@ -132,6 +133,7 @@ TrackId TrackTracker::AddTrack(const tracks::BlueprintBase& blueprint,
   }
   row.event_type = context_->storage->InternString(blueprint.event_type);
   row.counter_unit = counter_unit;
+  row.track_group_id = track_group_id;
   TrackId id = context_->storage->mutable_track_table()->Insert(row).id;
   if (args) {
     auto inserter = args_tracker_.AddArgsTo(id);

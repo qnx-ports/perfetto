@@ -140,7 +140,8 @@ class TrackTracker {
                    StringId,
                    GlobalArgsTracker::CompactArg*,
                    uint32_t,
-                   const SetArgsCallback&);
+                   const SetArgsCallback&,
+                   std::optional<uint32_t> track_group_id);
 
   template <typename BlueprintT>
   PERFETTO_ALWAYS_INLINE std::pair<TrackId, bool> InternTrackInner(
@@ -148,7 +149,8 @@ class TrackTracker {
       const typename BlueprintT::dimensions_t& dims = {},
       const typename BlueprintT::name_t& name = tracks::BlueprintName(),
       const SetArgsCallback& args = {},
-      const typename BlueprintT::unit_t& unit = tracks::BlueprintUnit()) {
+      const typename BlueprintT::unit_t& unit = tracks::BlueprintUnit(),
+      std::optional<uint32_t> track_group_id = std::nullopt) {
     uint64_t hash = tracks::HashFromBlueprintAndDimensions(bp, dims);
     auto [it, inserted] = tracks_.Insert(hash, {});
     if (inserted) {
@@ -184,7 +186,7 @@ class TrackTracker {
       base::ignore_result(name, unit);
       static constexpr uint32_t kDimensionCount =
           std::tuple_size_v<typename BlueprintT::dimensions_t>;
-      *it = AddTrack(bp, n, u, a.data(), kDimensionCount, args);
+      *it = AddTrack(bp, n, u, a.data(), kDimensionCount, args, track_group_id);
     }
     return std::make_pair(*it, inserted);
   }

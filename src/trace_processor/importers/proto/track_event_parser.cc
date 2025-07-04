@@ -1380,7 +1380,7 @@ class TrackEventParser::EventImporter {
   StringId category_id_;
   StringId name_id_;
   uint64_t track_uuid_;
-  TrackId track_id_;
+  // TrackId track_id_;
   std::optional<UniqueTid> utid_;
   std::optional<UniqueTid> upid_;
   std::optional<int64_t> thread_timestamp_;

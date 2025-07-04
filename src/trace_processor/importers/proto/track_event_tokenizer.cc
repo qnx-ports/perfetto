@@ -140,6 +140,35 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
     reservation.sibling_order_rank = track.sibling_order_rank();
   }
 
+  if (track.has_sibling_merge_behavior()) {
+    switch (track.sibling_merge_behavior()) {
+      case TrackDescriptorProto::SiblingMergeBehavior::
+          SIBLING_MERGE_BEHAVIOR_UNSPECIFIED:
+        reservation.sibling_merge_behavior =
+            Reservation::SiblingMergeBehavior::kUnspecified;
+        break;
+      case TrackDescriptorProto::SiblingMergeBehavior::
+          SIBLING_MERGE_BEHAVIOR_BY_TRACK_NAME:
+        reservation.sibling_merge_behavior =
+            Reservation::SiblingMergeBehavior::kByName;
+        break;
+      case TrackDescriptorProto::SiblingMergeBehavior::
+          SIBLING_MERGE_BEHAVIOR_NONE:
+        reservation.sibling_merge_behavior =
+            Reservation::SiblingMergeBehavior::kNone;
+        break;
+      case TrackDescriptorProto::SiblingMergeBehavior::
+          SIBLING_MERGE_BEHAVIOR_BY_SIBLING_MERGE_KEY:
+        reservation.sibling_merge_behavior =
+            Reservation::SiblingMergeBehavior::kByKey;
+        if (track.has_sibling_merge_key()) {
+          reservation.sibling_merge_key =
+              context_->storage->InternString(track.sibling_merge_key());
+        }
+        break;
+    }
+  }
+
   if (track.has_name())
     reservation.name = context_->storage->InternString(track.name());
   else if (track.has_static_name())

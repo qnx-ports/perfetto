@@ -29,6 +29,7 @@
 #include "src/trace_processor/importers/common/args_tracker.h"
 #include "src/trace_processor/importers/common/process_track_translation_table.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
+#include "src/trace_processor/importers/common/track_compressor.h"
 #include "src/trace_processor/importers/common/track_tracker.h"
 #include "src/trace_processor/importers/common/tracks.h"
 #include "src/trace_processor/importers/common/tracks_common.h"
@@ -74,10 +75,23 @@ constexpr auto kProcessTrackBlueprint = tracks::SliceBlueprint(
                                 tracks::LongDimensionBlueprint("track_uuid")),
     tracks::DynamicNameBlueprint());
 
-constexpr auto kGlobalTrackBlueprint = tracks::SliceBlueprint(
-    "global_track_event",
-    tracks::DimensionBlueprints(tracks::LongDimensionBlueprint("track_uuid")),
-    tracks::DynamicNameBlueprint());
+constexpr auto kGlobalTrackBlueprintNoMerge = TrackCompressor::SliceBlueprint(
+    "no_merge_global_track_event",
+    tracks::DimensionBlueprints(tracks::LongDimensionBlueprint("track_uuid")));
+
+constexpr auto kGlobalTrackBlueprintMergeByName =
+    TrackCompressor::SliceBlueprint(
+        "name_merge_global_track_event",
+        tracks::DimensionBlueprints(
+            tracks::LongDimensionBlueprint("parent_track_uuid"),
+            tracks::StringDimensionBlueprint("name")));
+
+constexpr auto kGlobalTrackBlueprintMergeByKey =
+    TrackCompressor::SliceBlueprint(
+        "key_merge_global_track_event",
+        tracks::DimensionBlueprints(
+            tracks::LongDimensionBlueprint("parent_track_uuid"),
+            tracks::StringDimensionBlueprint("merge_key")));
 
 }  // namespace
 
@@ -426,10 +440,34 @@ TrackEventTracker::ResolveDescriptorTrack(
         is_root_in_scope ? args_fn_root : args_fn_non_root,
         tracks::DynamicUnit(reservation.counter_details->unit));
   } else {
-    id = context_->track_tracker->InternTrack(
-        kGlobalTrackBlueprint, tracks::Dimensions(static_cast<int64_t>(uuid)),
-        tracks::DynamicName(reservation.name),
-        is_root_in_scope ? args_fn_root : args_fn_non_root);
+    switch (reservation.sibling_merge_behavior) {
+      case DescriptorTrackReservation::SiblingMergeBehavior::kNone: {
+        id = context_->track_compressor->InternScoped(
+            kGlobalTrackBlueprintNoMerge,
+            tracks::Dimensions(static_cast<int64_t>(uuid)), 0, 0,
+            tracks::DynamicName(reservation.name));
+        break;
+      }
+      case DescriptorTrackReservation::SiblingMergeBehavior::kByKey: {
+        id = context_->track_compressor->InternScoped(
+            kGlobalTrackBlueprintMergeByKey,
+            tracks::Dimensions(
+                static_cast<int64_t>(reservation.parent_uuid),
+                context_->storage->GetString(reservation.sibling_merge_key)),
+            0, 0, tracks::DynamicName(reservation.name));
+        break;
+      }
+      case DescriptorTrackReservation::SiblingMergeBehavior::kUnspecified:
+      case DescriptorTrackReservation::SiblingMergeBehavior::kByName: {
+        id = context_->track_compressor->InternScoped(
+            kGlobalTrackBlueprintMergeByName,
+            tracks::Dimensions(
+                static_cast<int64_t>(reservation.parent_uuid),
+                context_->storage->GetString(reservation.name)),
+            0, 0, tracks::DynamicName(reservation.name));
+        break;
+      }
+    }
   }
   set_parent_id(id);
   return ResolvedDescriptorTrack::Global(id, reservation.is_counter);

@@ -70,11 +70,6 @@ using uncompressed_dimensions_t = decltype(UncompressedDimensions(
 // however, leads to an explosion of tracks which is undesirable. This class
 // exists to multiplex slices so that multiple events correspond to a single
 // track in a way which minimises the number of tracks.
-//
-// WARNING: the usage of this class SHOULD BE VERY RARE. These days, this class
-// mainly exists for legacy usage due to how the Perfetto UI used to work rather
-// than an active choice. Prefer making tracks peers and adding a UI plugin if
-// you want custom visualization instead of using this class.
 class TrackCompressor {
  public:
   explicit TrackCompressor(TraceProcessorContext* context);
@@ -88,10 +83,12 @@ class TrackCompressor {
       int64_t cookie,
       const typename BlueprintT::name_t& name = tracks::BlueprintName()) {
     uint64_t hash = tracks::HashFromBlueprintAndDimensions(bp, dims);
-    auto final_dims = std::tuple_cat(
-        dims, std::make_tuple(BeginInternal(TypeToNestingBehaviour(bp.type),
-                                            hash, cookie)));
-    return context_->track_tracker->InternTrack(bp, final_dims, name);
+    uint32_t track_group_id =
+        BeginInternal(TypeToNestingBehaviour(bp.type), hash, cookie);
+    auto final_dims = std::tuple_cat(dims, std::make_tuple(track_group_id));
+    return context_->track_tracker
+        ->InternTrackInner(bp, final_dims, name, {}, {}, track_group_id)
+        .first;
   }
 
   // Ends a new slice which has the given cookie.
@@ -102,9 +99,11 @@ class TrackCompressor {
       int64_t cookie,
       const typename BlueprintT::name_t& name = tracks::BlueprintName()) {
     uint64_t hash = tracks::HashFromBlueprintAndDimensions(bp, dims);
-    auto final_dims =
-        std::tuple_cat(dims, std::make_tuple(EndInternal(hash, cookie)));
-    return context_->track_tracker->InternTrack(bp, final_dims, name);
+    uint32_t track_group_id = EndInternal(hash, cookie);
+    auto final_dims = std::tuple_cat(dims, std::make_tuple(track_group_id));
+    return context_->track_tracker
+        ->InternTrackInner(bp, final_dims, name, {}, {}, track_group_id)
+        .first;
   }
 
   // Creates a scoped slice.
@@ -118,9 +117,11 @@ class TrackCompressor {
       int64_t dur,
       const typename BlueprintT::name_t& name = tracks::BlueprintName()) {
     uint64_t hash = tracks::HashFromBlueprintAndDimensions(bp, dims);
-    auto final_dims =
-        std::tuple_cat(dims, std::make_tuple(ScopedInternal(hash, ts, dur)));
-    return context_->track_tracker->InternTrack(bp, final_dims, name);
+    uint32_t track_group_id = ScopedInternal(hash, ts, dur);
+    auto final_dims = std::tuple_cat(dims, std::make_tuple(track_group_id));
+    return context_->track_tracker
+        ->InternTrackInner(bp, final_dims, name, {}, {}, track_group_id)
+        .first;
   }
 
   // Wrapper around tracks::SliceBlueprint which makes the blueprint eligible

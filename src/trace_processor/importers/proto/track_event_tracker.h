@@ -46,6 +46,12 @@ class TrackEventTracker {
       kChronological = 2,
       kExplicit = 3,
     };
+    enum class SiblingMergeBehavior {
+      kUnspecified = 0,
+      kByName = 1,
+      kNone = 2,
+      kByKey = 3,
+    };
     struct CounterDetails {
       StringId category = kNullStringId;
       int64_t unit_multiplier = 1;
@@ -71,6 +77,11 @@ class TrackEventTracker {
 
     // For counter tracks.
     std::optional<CounterDetails> counter_details;
+
+    // For merging tracks.
+    SiblingMergeBehavior sibling_merge_behavior =
+        SiblingMergeBehavior::kUnspecified;
+    StringId sibling_merge_key = kNullStringId;
 
     // For UI visualisation
     ChildTracksOrdering ordering = ChildTracksOrdering::kUnknown;

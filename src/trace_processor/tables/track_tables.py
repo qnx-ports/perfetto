@@ -81,6 +81,11 @@ TRACK_TABLE = Table(
             cpp_access=CppAccess.READ,
             cpp_access_duration=CppAccessDuration.POST_FINALIZATION,
         ),
+        C(
+            "track_group_id",
+            CppOptional(CppUint32()),
+            sql_access=SqlAccess.HIGH_PERF,
+        ),
     ])
 
 # Keep this list sorted.
