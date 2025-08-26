@@ -45,6 +45,24 @@ SELECT
     ELSE printf('%dns', $dur)
   END;
 
+-- Format large numbers with K, M, G, T suffixes to 2 decimal places.
+CREATE PERFETTO FUNCTION _format_large_number(
+    value DOUBLE
+)
+RETURNS STRING AS
+SELECT
+  CASE
+    WHEN abs($value) >= 1000000000000
+    THEN printf('%.2fT', $value / 1000000000000.0)
+    WHEN abs($value) >= 1000000000
+    THEN printf('%.2fG', $value / 1000000000.0)
+    WHEN abs($value) >= 1000000
+    THEN printf('%.2fM', $value / 1000000.0)
+    WHEN abs($value) >= 1000
+    THEN printf('%.2fK', $value / 1000.0)
+    ELSE printf('%.2f', $value)
+  END;
+
 -- Calculate pixels per nanosecond scaling factor for time-to-pixel conversion.
 CREATE PERFETTO FUNCTION _pixels_per_ns(
     total_width LONG,
@@ -512,7 +530,11 @@ RETURNS Expr AS
         total_width,
         min_cutoff,
         min(y_pixel) AS track_top,
-        max(y_pixel + height_pixel) AS track_bottom
+        max(y_pixel + height_pixel) AS track_bottom,
+        -- Get counter-specific info for y-axis labels
+        max(CASE WHEN element_type = 'counter' THEN max_counter_value ELSE NULL END) AS max_counter_value,
+        max(CASE WHEN element_type = 'counter' THEN min_counter_value ELSE NULL END) AS min_counter_value,
+        max(CASE WHEN element_type = 'counter' THEN 1 ELSE 0 END) AS is_counter_track
       FROM $positions_table
       GROUP BY
         $svg_group_key_col,
@@ -522,7 +544,17 @@ RETURNS Expr AS
   SELECT
     tp.svg_group_key,
     tp.track_group_key,
-    '<text x="5" y="15" font-size="11" fill="#333">' || _escape_xml(cast_string!(label_text)) || '</text>' || '<g transform="translate(0,20)">' || coalesce(
+    '<text x="5" y="15" font-size="11" fill="#333">' || _escape_xml(cast_string!(label_text)) || '</text>' || CASE
+      WHEN tp.is_counter_track = 1
+      THEN '<text x="5" y="30" font-size="9" fill="#666">' || _format_large_number(tp.max_counter_value) || '</text>' || CASE
+        WHEN tp.min_counter_value < 0
+        THEN '<text x="5" y="' || (
+          30 + tp.track_bottom
+        ) || '" font-size="9" fill="#666">' || _format_large_number(tp.min_counter_value) || '</text>'
+        ELSE ''
+      END
+      ELSE ''
+    END || '<g transform="translate(0,20)">' || coalesce(
       (
         SELECT
           GROUP_CONCAT(
