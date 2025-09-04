@@ -282,6 +282,7 @@ RETURNS Expr AS
 );
 
 -- Render slice interval as simple SVG rect with text overlay when space permits.
+-- Fixed version of _slice_to_svg function with proper vertical text centering
 CREATE PERFETTO FUNCTION _slice_to_svg(
     x_pixel DOUBLE,
     y_pixel DOUBLE,
@@ -311,7 +312,7 @@ SELECT
           $x_pixel + $width_pixel / 2
         ) || '" y="' || (
           $y_pixel + $height_pixel / 2
-        ) || '" text-anchor="middle" font-size="11" fill="#333">' || _escape_xml(_fit_text($name, CAST($width_pixel AS INTEGER) - 4)) || '</text>'
+        ) || '" text-anchor="middle" font-size="11" fill="#333" dominant-baseline="central">' || _escape_xml(_fit_text($name, CAST($width_pixel AS INTEGER) - 4)) || '</text>'
         ELSE ''
       END
     )
