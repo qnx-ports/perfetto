@@ -142,6 +142,20 @@ class AndroidStdlib(TestSuite):
         "com.android.chrome",22768,"[NULL]","05122f25-2f5b-4650-aeeb-cf59a9d6295a",19000,"required notification not provided","JOB_SERVICE_NOTIFICATION_NOT_PROVIDED"
       """))
 
+  def test_anr_with_timer(self):
+    return DiffTestBlueprint(
+        trace=DataPath('android_anr.pftrace.gz'),
+        query="""
+        INCLUDE PERFETTO MODULE android.anrs;
+        SELECT process_name, pid, upid, error_id, ts, subject, timer_delay, anr_type, anr_dur_ms
+        FROM android_anrs;
+      """,
+        out=Csv("""
+        "process_name","pid","upid","error_id","ts","subject","timer_delay","anr_type","anr_dur_ms"
+        "com.google.android.videos",4464,1765,"d55b1536-9c53-422a-af00-33daaf992b0d",184660962756627,"Process ProcessRecord{c098c64 4464:com.google.android.videos/u0a224} failed to complete startup","[NULL]","BIND_APPLICATION","[NULL]"
+        "com.google.android.gms.persistent",30647,112,"45210ec5-1525-49c3-816c-75afb1973d0b",184707199069963,"Broadcast of Intent { act=com.google.android.gms.tron.ALARM flg=0x10 xflg=0x4 pkg=com.google.android.gms cmp=com.google.android.gms/.tron.AlarmReceiver (has extras) }",22247029,"BROADCAST_OF_INTENT",60006
+      """))
+
   def test_binder_sync_binder_metrics(self):
     return DiffTestBlueprint(
         trace=DataPath('android_binder_metric_trace.atr'),
@@ -1396,16 +1410,16 @@ class AndroidStdlib(TestSuite):
       """,
         out=Csv("""
         "ts","dur","score","bucket","process_name","oom_adj_ts","oom_adj_dur","oom_adj_thread_name","oom_adj_reason","oom_adj_trigger"
-1737065264829,701108081,925,"cached","com.android.providers.calendar",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737066678827,3470211742,935,"cached","com.android.imsserviceentitlement",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737066873002,3470017567,945,"cached","com.android.carrierconfig",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737067058812,3469831757,955,"cached","com.android.messaging",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737067246975,699224817,955,"cached","android.process.acore",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737068421919,3468468650,965,"cached","com.android.shell",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737068599673,697908135,965,"cached","android.process.media",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737068933602,3467956967,975,"cached","com.android.gallery3d",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737069091010,3467799559,975,"cached","com.android.packageinstaller",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
-1737069240534,3467650035,985,"cached","com.android.managedprovisioning",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737065264829,701108081,925,"cached","com.android.providers.calendar",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737066678827,2934486383,935,"cached","com.android.imsserviceentitlement",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737066873002,2934292208,945,"cached","com.android.carrierconfig",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737067058812,2934106398,955,"cached","com.android.messaging",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737067246975,699224817,955,"cached","android.process.acore",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737068421919,2932743291,965,"cached","com.android.shell",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737068599673,697908135,965,"cached","android.process.media",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737068933602,2932231608,975,"cached","com.android.gallery3d",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737069091010,3467799559,975,"cached","com.android.packageinstaller",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
+ 1737069240534,3467650035,985,"cached","com.android.managedprovisioning",1737064421516,29484835,"binder:642_1","processEnd","IActivityManager#1598246212"
       """))
 
   def test_broadcast_minsdk_u(self):
