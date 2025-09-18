@@ -1183,7 +1183,7 @@ TEST_F(UnixSocketTest, ShmemSupported) {
 }
 
 // Test UnixSocketWatch functionality on platforms that support inotify
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX_BUT_NOT_QNX) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
 TEST_F(UnixSocketTest, UnixSocketWatch) {
   TempDir tmp_dir = TempDir::Create();
@@ -1241,7 +1241,7 @@ TEST_F(UnixSocketTest, UnixSocketWatchInvalidPath) {
   ASSERT_EQ(watch1, nullptr);
   ASSERT_EQ(watch2, nullptr);
 }
-#endif  // OS_LINUX || OS_ANDROID || OS_MAC
+#endif  // LINUX_BUT_NOT_QNX || OS_ANDROID
 
 }  // namespace
 }  // namespace base
