@@ -504,18 +504,18 @@ class UnixSocketWatch {
       const char* sock_name,
       std::function<void()> callback);
 
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX_BUT_NOT_QNX) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
   ~UnixSocketWatch();
 
  private:
   UnixSocketWatch(TaskRunner*,
                   std::string sock_base_name,
-                  ScopedPlatformHandle inotify_fd,
+                  ScopedFile inotify_fd,
                   std::function<void()> callback);
   TaskRunner* task_runner = nullptr;
   std::string sock_base_name;  // Only the name without the path.
-  ScopedPlatformHandle inotify_fd;
+  ScopedFile inotify_fd;
   std::function<void()> callback;
   WeakPtrFactory<UnixSocketWatch> weak_ptr_factory_;  // Keep last.
 #endif

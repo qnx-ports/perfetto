@@ -41,6 +41,7 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 #endif
@@ -63,13 +64,14 @@
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
 // Use a local stripped copy of vm_sockets.h from UAPI.
-#include <libgen.h>
-#include <sys/inotify.h>
 #include "src/base/vm_sockets.h"
 #endif
 
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_QNX)
-#include <sys/time.h>
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX_BUT_NOT_QNX) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
+// For inotify. QNX doesn't have full support for inotify_init1().
+#include <libgen.h>
+#include <sys/inotify.h>
 #endif
 
 namespace perfetto {
@@ -1297,7 +1299,7 @@ void UnixSocket::EventListener::OnDataAvailable(UnixSocket*) {}
 
 // UnixSocketWatch
 
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX_BUT_NOT_QNX) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
 
 std::unique_ptr<UnixSocketWatch> UnixSocketWatch::WatchUnixSocketCreation(
@@ -1310,7 +1312,7 @@ std::unique_ptr<UnixSocketWatch> UnixSocketWatch::WatchUnixSocketCreation(
     return nullptr;
   }
 
-  ScopedPlatformHandle inotify_fd(inotify_init1(IN_CLOEXEC | IN_NONBLOCK));
+  ScopedFile inotify_fd(inotify_init1(IN_CLOEXEC | IN_NONBLOCK));
   if (!inotify_fd) {
     PERFETTO_DLOG("inotify_init() failed");
     return nullptr;
@@ -1320,8 +1322,8 @@ std::unique_ptr<UnixSocketWatch> UnixSocketWatch::WatchUnixSocketCreation(
     // The {} block bounds the lifetime of sock_dir.
     // We need to use strdup because dirname() and basename() on Linux
     // manipulate the source string.
-    std::unique_ptr<char, base::FreeDeleter> sock_name_copy(strdup(sock_name));
-    const char* sock_dir = dirname(sock_name_copy.get());
+    base::StackString<255> sock_name_copy("%s", sock_name);
+    const char* sock_dir = dirname(sock_name_copy.mutable_data());
     if (inotify_add_watch(*inotify_fd, sock_dir, IN_CREATE) < 0) {
       PERFETTO_DLOG("inotify_add_watch(%s) failed", sock_dir);
       return nullptr;
@@ -1329,8 +1331,8 @@ std::unique_ptr<UnixSocketWatch> UnixSocketWatch::WatchUnixSocketCreation(
   }
   std::string sock_base_name;
   {
-    std::unique_ptr<char, base::FreeDeleter> sock_name_copy(strdup(sock_name));
-    sock_base_name = basename(sock_name_copy.get());
+    base::StackString<255> sock_name_copy("%s", sock_name);
+    sock_base_name = basename(sock_name_copy.mutable_data());
   }
 
   return std::unique_ptr<UnixSocketWatch>(
@@ -1340,7 +1342,7 @@ std::unique_ptr<UnixSocketWatch> UnixSocketWatch::WatchUnixSocketCreation(
 
 UnixSocketWatch::UnixSocketWatch(TaskRunner* tr,
                                  std::string sn,
-                                 ScopedPlatformHandle ifd,
+                                 ScopedFile ifd,
                                  std::function<void()> cb)
     : task_runner(tr),
       sock_base_name(std::move(sn)),
@@ -1351,14 +1353,14 @@ UnixSocketWatch::UnixSocketWatch(TaskRunner* tr,
       *inotify_fd, [weak_handle = weak_ptr_factory_.GetWeakPtr()] {
         if (!weak_handle)
           return;
-        char buf[4096];
+        alignas(struct inotify_event) char buf[4096];
         ssize_t rsize = base::Read(*weak_handle->inotify_fd, buf, sizeof(buf));
-        if (rsize < 0)
+        if (rsize <= 0)
           return;
         for (ssize_t i = 0, esize = 0; i < rsize; i += esize) {
           auto* evt = reinterpret_cast<struct inotify_event*>(&buf[i]);
           esize = static_cast<ssize_t>(sizeof(struct inotify_event) + evt->len);
-          if (evt->len && (evt->mask & IN_CREATE)) {
+          if (evt->len > 0 && (evt->mask & IN_CREATE)) {
             if (weak_handle->sock_base_name == evt->name) {
               weak_handle->task_runner->PostTask(weak_handle->callback);
               return;
