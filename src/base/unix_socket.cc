@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include "perfetto/base/compiler.h"
 #include "perfetto/ext/base/android_utils.h"
+#include "perfetto/ext/base/flags.h"
 #include "perfetto/ext/base/string_utils.h"
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
@@ -1306,6 +1307,9 @@ std::unique_ptr<UnixSocketWatch> UnixSocketWatch::WatchUnixSocketCreation(
     TaskRunner* task_runner,
     const char* sock_name,
     std::function<void()> callback) {
+  if (!flags::use_inotify_on_ipc_socket_client)
+    return nullptr;
+
   if (!sock_name || base::GetSockFamily(sock_name) != base::SockFamily::kUnix ||
       sock_name[0] == '@') {
     // We can add a inotify watch only for non-abstract (linked) Unix sockets.
