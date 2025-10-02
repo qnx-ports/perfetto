@@ -7110,16 +7110,18 @@ class F2fsWriteBeginFtraceEvent(_message.Message):
     def __init__(self, dev: _Optional[int] = ..., ino: _Optional[int] = ..., pos: _Optional[int] = ..., len: _Optional[int] = ..., flags: _Optional[int] = ...) -> None: ...
 
 class F2fsWriteCheckpointFtraceEvent(_message.Message):
-    __slots__ = ["dev", "is_umount", "msg", "reason"]
+    __slots__ = ["dest_msg", "dev", "is_umount", "msg", "reason"]
+    DEST_MSG_FIELD_NUMBER: _ClassVar[int]
     DEV_FIELD_NUMBER: _ClassVar[int]
     IS_UMOUNT_FIELD_NUMBER: _ClassVar[int]
     MSG_FIELD_NUMBER: _ClassVar[int]
     REASON_FIELD_NUMBER: _ClassVar[int]
+    dest_msg: str
     dev: int
     is_umount: int
     msg: str
     reason: int
-    def __init__(self, dev: _Optional[int] = ..., is_umount: _Optional[int] = ..., msg: _Optional[str] = ..., reason: _Optional[int] = ...) -> None: ...
+    def __init__(self, dev: _Optional[int] = ..., is_umount: _Optional[int] = ..., msg: _Optional[str] = ..., reason: _Optional[int] = ..., dest_msg: _Optional[str] = ...) -> None: ...
 
 class F2fsWriteEndFtraceEvent(_message.Message):
     __slots__ = ["copied", "dev", "ino", "len", "pos"]
