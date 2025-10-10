@@ -28,7 +28,10 @@ import {Flamegraph} from '../../widgets/flamegraph';
 import ProcessThreadGroupsPlugin from '../dev.perfetto.ProcessThreadGroups';
 import TraceProcessorTrackPlugin from '../dev.perfetto.TraceProcessorTrack';
 import {TraceProcessorCounterTrack} from '../dev.perfetto.TraceProcessorTrack/trace_processor_counter_track';
-import {createPerfCallsitesTrack, createSkippedCallsitesTrack} from './perf_samples_profile_track';
+import {
+  createPerfCallsitesTrack,
+  createSkippedCallsitesTrack,
+} from './perf_samples_profile_track';
 
 const PERF_SAMPLES_PROFILE_TRACK_KIND = 'PerfSamplesProfileTrack';
 
@@ -47,6 +50,7 @@ export default class implements PerfettoPlugin {
     await this.addProcessPerfSamplesTracks(trace);
     await this.addSkippedProcessPerfSamplesTracks(trace);
     await this.addThreadPerfSamplesTracks(trace);
+    await this.addSkippedThreadPerfSamplesTracks(trace);
     await this.addPerfCounterTracks(trace);
 
     trace.onTraceReady.addListener(async () => {
@@ -152,8 +156,8 @@ export default class implements PerfettoPlugin {
       },
     });
   }
-  
-private async addSkippedProcessPerfSamplesTracks(trace: Trace) {
+
+  private async addSkippedProcessPerfSamplesTracks(trace: Trace) {
     const pResult = await trace.engine.query(`
       SELECT DISTINCT upid
       FROM perf_sample
@@ -166,12 +170,8 @@ private async addSkippedProcessPerfSamplesTracks(trace: Trace) {
       ORDER BY upid
     `);
 
-    const upids: number[] = []
-    for (
-      const it = pResult.iter({upid: NUM});
-      it.valid();
-      it.next()
-    ) {
+    const upids: number[] = [];
+    for (const it = pResult.iter({upid: NUM}); it.valid(); it.next()) {
       upids.push(it.upid);
     }
 
@@ -197,8 +197,8 @@ private async addSkippedProcessPerfSamplesTracks(trace: Trace) {
         sortOrder: -40,
       });
       group?.addChildInOrder(summaryTrack);
+    }
   }
- }
 
   private async addThreadPerfSamplesTracks(trace: Trace) {
     const tResult = await trace.engine.query(`
@@ -302,6 +302,73 @@ private async addSkippedProcessPerfSamplesTracks(trace: Trace) {
     }
   }
   
+  private async addSkippedThreadPerfSamplesTracks(trace: Trace) {
+    const tResult = await trace.engine.query(`
+      SELECT DISTINCT
+        upid, utid, tid, thread.name AS threadName
+      FROM perf_sample
+      JOIN thread USING (utid)
+      JOIN perf_counter_track AS pct USING (perf_session_id)
+      WHERE
+        callsite_id IS NULL
+    `);
+
+    const countersByUtid = new Map<
+      number,
+      {
+        threadName: string | null;
+        tid: number;
+        upid: number | null;
+      }[]
+    >();
+    for (
+      const it = tResult.iter({
+        utid: NUM,
+        tid: NUM,
+        threadName: STR_NULL,
+        upid: NUM_NULL,
+      });
+      it.valid();
+      it.next()
+    ) {
+      const {threadName, utid, tid, upid} = it;
+      if (!countersByUtid.has(utid)) {
+        countersByUtid.set(utid, []);
+      }
+      countersByUtid
+        .get(utid)!
+        .push({threadName, tid, upid});
+    }
+
+    for (const [utid, counters] of countersByUtid) {
+      // Summary track containing all callstacks, hidden if there's only one counter.
+      const tid = counters[0].tid;
+      const threadName = counters[0].threadName;
+      const upid = counters[0].upid;
+      const uri = `${getThreadUriPrefix(upid, utid)}_perf_samples_profile`;
+      trace.tracks.registerTrack({
+        uri,
+        tags: {
+          kinds: [PERF_SAMPLES_PROFILE_TRACK_KIND],
+          utid,
+          upid: upid ?? undefined,
+        },
+        renderer: createSkippedCallsitesTrack(trace, uri, upid ?? undefined, utid),
+      });
+      const group = trace.plugins
+        .getPlugin(ProcessThreadGroupsPlugin)
+        .getGroupForThread(utid);
+      const summaryTrack = new TrackNode({
+        uri,
+        name: `${threadName ?? 'Thread'} ${tid} callstacks (skipped)`,
+        isSummary: true,
+        headless: true,
+        sortOrder: -50,
+      });
+      group?.addChildInOrder(summaryTrack);
+    }
+  }
+
   private async addPerfCounterTracks(trace: Trace) {
     const perfCountersGroup = new TrackNode({
       name: 'Perf counters',
