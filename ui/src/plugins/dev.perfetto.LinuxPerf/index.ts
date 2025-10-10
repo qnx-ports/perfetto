@@ -20,6 +20,7 @@ import {
 import {PerfettoPlugin} from '../../public/plugin';
 import {AreaSelection, areaSelectionsEqual} from '../../public/selection';
 import {Trace} from '../../public/trace';
+import {featureFlags} from '../../core/feature_flags';
 import {COUNTER_TRACK_KIND} from '../../public/track_kinds';
 import {getThreadUriPrefix} from '../../public/utils';
 import {TrackNode} from '../../public/workspace';
@@ -39,6 +40,13 @@ function makeUriForProc(upid: number, sessionId: number) {
   return `/process_${upid}/perf_samples_profile_${sessionId}`;
 }
 
+const SHOW_SKIPPED_PERF_SAMPLES = featureFlags.register({
+  id: 'showSkippedPerfSamples',
+  name: 'Show skipped perf samples',
+  description: 'Whether to display the skipped perf samples under the process track.',
+  defaultValue: true,
+});
+
 export default class implements PerfettoPlugin {
   static readonly id = 'dev.perfetto.LinuxPerf';
   static readonly dependencies = [
@@ -48,9 +56,10 @@ export default class implements PerfettoPlugin {
 
   async onTraceLoad(trace: Trace): Promise<void> {
     await this.addProcessPerfSamplesTracks(trace);
-    await this.addSkippedProcessPerfSamplesTracks(trace);
+    if (SHOW_SKIPPED_PERF_SAMPLES.get()) {
+      await this.addSkippedProcessPerfSamplesTracks(trace);
+    }
     await this.addThreadPerfSamplesTracks(trace);
-    await this.addSkippedThreadPerfSamplesTracks(trace);
     await this.addPerfCounterTracks(trace);
 
     trace.onTraceReady.addListener(async () => {
@@ -299,73 +308,6 @@ export default class implements PerfettoPlugin {
         });
         summaryTrack.addChildInOrder(track);
       }
-    }
-  }
-  
-  private async addSkippedThreadPerfSamplesTracks(trace: Trace) {
-    const tResult = await trace.engine.query(`
-      SELECT DISTINCT
-        upid, utid, tid, thread.name AS threadName
-      FROM perf_sample
-      JOIN thread USING (utid)
-      JOIN perf_counter_track AS pct USING (perf_session_id)
-      WHERE
-        callsite_id IS NULL
-    `);
-
-    const countersByUtid = new Map<
-      number,
-      {
-        threadName: string | null;
-        tid: number;
-        upid: number | null;
-      }[]
-    >();
-    for (
-      const it = tResult.iter({
-        utid: NUM,
-        tid: NUM,
-        threadName: STR_NULL,
-        upid: NUM_NULL,
-      });
-      it.valid();
-      it.next()
-    ) {
-      const {threadName, utid, tid, upid} = it;
-      if (!countersByUtid.has(utid)) {
-        countersByUtid.set(utid, []);
-      }
-      countersByUtid
-        .get(utid)!
-        .push({threadName, tid, upid});
-    }
-
-    for (const [utid, counters] of countersByUtid) {
-      // Summary track containing all callstacks, hidden if there's only one counter.
-      const tid = counters[0].tid;
-      const threadName = counters[0].threadName;
-      const upid = counters[0].upid;
-      const uri = `${getThreadUriPrefix(upid, utid)}_perf_samples_profile`;
-      trace.tracks.registerTrack({
-        uri,
-        tags: {
-          kinds: [PERF_SAMPLES_PROFILE_TRACK_KIND],
-          utid,
-          upid: upid ?? undefined,
-        },
-        renderer: createSkippedCallsitesTrack(trace, uri, upid ?? undefined, utid),
-      });
-      const group = trace.plugins
-        .getPlugin(ProcessThreadGroupsPlugin)
-        .getGroupForThread(utid);
-      const summaryTrack = new TrackNode({
-        uri,
-        name: `${threadName ?? 'Thread'} ${tid} callstacks (skipped)`,
-        isSummary: true,
-        headless: true,
-        sortOrder: -50,
-      });
-      group?.addChildInOrder(summaryTrack);
     }
   }
 
