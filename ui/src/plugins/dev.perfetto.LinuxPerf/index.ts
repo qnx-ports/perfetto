@@ -20,7 +20,8 @@ import {
 import {PerfettoPlugin} from '../../public/plugin';
 import {AreaSelection, areaSelectionsEqual} from '../../public/selection';
 import {Trace} from '../../public/trace';
-import {featureFlags} from '../../core/feature_flags';
+import {Flag, FlagSettings} from '../../public/feature_flag';
+import {App} from '../../public/app';
 import {COUNTER_TRACK_KIND} from '../../public/track_kinds';
 import {getThreadUriPrefix} from '../../public/utils';
 import {TrackNode} from '../../public/workspace';
@@ -40,23 +41,28 @@ function makeUriForProc(upid: number, sessionId: number) {
   return `/process_${upid}/perf_samples_profile_${sessionId}`;
 }
 
-const SHOW_SKIPPED_PERF_SAMPLES = featureFlags.register({
-  id: 'showSkippedPerfSamples',
-  name: 'Show skipped perf samples',
-  description: 'Whether to display the skipped perf samples under the process track.',
-  defaultValue: true,
-});
-
-export default class implements PerfettoPlugin {
+export default class LinuxPerf implements PerfettoPlugin {
   static readonly id = 'dev.perfetto.LinuxPerf';
   static readonly dependencies = [
     ProcessThreadGroupsPlugin,
     TraceProcessorTrackPlugin,
   ];
+  private static showSkippedPerfSamples: Flag;
+
+  static onActivate(app: App): void {
+    const flagSettings: FlagSettings = {
+      id: `showSkippedPerfSamples`,
+      name: 'Show skipped perf samples',
+      defaultValue: true,
+      description:
+        'Whether to display the skipped perf samples under the process track.',
+    };
+    this.showSkippedPerfSamples = app.featureFlags.register(flagSettings);
+  }
 
   async onTraceLoad(trace: Trace): Promise<void> {
     await this.addProcessPerfSamplesTracks(trace);
-    if (SHOW_SKIPPED_PERF_SAMPLES.get()) {
+    if (LinuxPerf.showSkippedPerfSamples.get()) {
       await this.addSkippedProcessPerfSamplesTracks(trace);
     }
     await this.addThreadPerfSamplesTracks(trace);
