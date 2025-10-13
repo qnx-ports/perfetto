@@ -56,9 +56,9 @@ export default class LinuxPerf implements PerfettoPlugin {
       name: 'Show skipped perf samples',
       description:
         'Whether to display the skipped perf samples under the process track.',
-      schema:z.boolean(),
+      schema: z.boolean(),
       defaultValue: true,
-      requiresReload:false,
+      requiresReload: false,
     };
     this.showSkippedPerfSamples = app.settings.register(boolSettingDesc);
   }
