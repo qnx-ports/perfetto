@@ -20,7 +20,7 @@ import {
 import {PerfettoPlugin} from '../../public/plugin';
 import {AreaSelection, areaSelectionsEqual} from '../../public/selection';
 import {Trace} from '../../public/trace';
-import {Flag, FlagSettings} from '../../public/feature_flag';
+import {Setting, SettingDescriptor} from '../../public/settings';
 import {App} from '../../public/app';
 import {COUNTER_TRACK_KIND} from '../../public/track_kinds';
 import {getThreadUriPrefix} from '../../public/utils';
@@ -34,6 +34,7 @@ import {
   createPerfCallsitesTrack,
   createSkippedCallsitesTrack,
 } from './perf_samples_profile_track';
+import {z} from 'zod';
 
 const PERF_SAMPLES_PROFILE_TRACK_KIND = 'PerfSamplesProfileTrack';
 
@@ -47,17 +48,19 @@ export default class LinuxPerf implements PerfettoPlugin {
     ProcessThreadGroupsPlugin,
     TraceProcessorTrackPlugin,
   ];
-  private static showSkippedPerfSamples: Flag;
+  private static showSkippedPerfSamples: Setting<boolean>;
 
   static onActivate(app: App): void {
-    const flagSettings: FlagSettings = {
+    const boolSettingDesc: SettingDescriptor<boolean> = {
       id: `showSkippedPerfSamples`,
       name: 'Show skipped perf samples',
-      defaultValue: true,
       description:
         'Whether to display the skipped perf samples under the process track.',
+      schema:z.boolean(),
+      defaultValue: true,
+      requiresReload:false,
     };
-    this.showSkippedPerfSamples = app.featureFlags.register(flagSettings);
+    this.showSkippedPerfSamples = app.settings.register(boolSettingDesc);
   }
 
   async onTraceLoad(trace: Trace): Promise<void> {
