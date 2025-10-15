@@ -43,9 +43,26 @@ export type PerfettoSqlType =
       };
     };
 
+export function isQuantativeType(type: PerfettoSqlType) {
+  switch (type.kind) {
+    case 'int':
+    case 'double':
+    case 'duration':
+    case 'timestamp':
+    case 'id':
+    case 'joinid':
+    case 'arg_set_id':
+      return true;
+    case 'boolean':
+    case 'bytes':
+    case 'string':
+      return false;
+  }
+}
+
 export class PerfettoSqlTypes {
   static readonly INT: PerfettoSqlType = {kind: 'int'};
-  static readonly FLOAT: PerfettoSqlType = {kind: 'float'};
+  static readonly DOUBLE: PerfettoSqlType = {kind: 'double'};
   static readonly STRING: PerfettoSqlType = {kind: 'string'};
   static readonly BOOLEAN: PerfettoSqlType = {kind: 'boolean'};
   static readonly TIMESTAMP: PerfettoSqlType = {kind: 'timestamp'};
