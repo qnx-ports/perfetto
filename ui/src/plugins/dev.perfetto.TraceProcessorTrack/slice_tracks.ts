@@ -256,4 +256,9 @@ export const SLICE_TRACK_SCHEMAS: ReadonlyArray<SliceTrackTypeSchema> = [
     topLevelGroup: 'THREAD',
     group: undefined,
   },
+  {
+    type: 'f2fs_write_checkpoint',
+    topLevelGroup: 'IO',
+    group: 'F2FS Write Checkpoint',
+  },
 ];
