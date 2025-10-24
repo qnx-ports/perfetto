@@ -37,7 +37,6 @@ export interface SlicesSourceSerializedState {
   process_name?: string;
   track_name?: string;
   filters?: FilterDefinition[];
-  customTitle?: string;
   comment?: string;
 }
 
@@ -78,13 +77,12 @@ export class SlicesSourceNode implements SourceNode {
       process_name: this.state.process_name?.slice(),
       track_name: this.state.track_name?.slice(),
       filters: this.state.filters ? [...this.state.filters] : undefined,
-      customTitle: this.state.customTitle,
     };
     return new SlicesSourceNode(stateCopy);
   }
 
   getTitle(): string {
-    return this.state.customTitle ?? 'Simple slices';
+    return 'Simple slices';
   }
 
   serializeState(): SlicesSourceSerializedState {
@@ -94,7 +92,6 @@ export class SlicesSourceNode implements SourceNode {
       process_name: this.state.process_name,
       track_name: this.state.track_name,
       filters: this.state.filters,
-      customTitle: this.state.customTitle,
       comment: this.state.comment,
     };
   }

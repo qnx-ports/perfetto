@@ -40,7 +40,6 @@ import {redrawModal} from '../../../../../widgets/modal';
 export interface TableSourceSerializedState {
   sqlTable?: string;
   filters?: FilterDefinition[];
-  customTitle?: string;
   comment?: string;
 }
 
@@ -128,7 +127,6 @@ export class TableSourceNode implements SourceNode {
       sqlModules: this.state.sqlModules,
       sqlTable: this.state.sqlTable,
       filters: this.state.filters?.map((f) => ({...f})),
-      customTitle: this.state.customTitle,
       onchange: this.state.onchange,
     };
     return new TableSourceNode(stateCopy);
@@ -191,7 +189,7 @@ export class TableSourceNode implements SourceNode {
   }
 
   getTitle(): string {
-    return this.state.customTitle ?? `${this.state.sqlTable?.name}`;
+    return `${this.state.sqlTable?.name}`;
   }
 
   getStructuredQuery(): protos.PerfettoSqlStructuredQuery | undefined {
@@ -221,7 +219,6 @@ export class TableSourceNode implements SourceNode {
     return {
       sqlTable: this.state.sqlTable?.name,
       filters: this.state.filters,
-      customTitle: this.state.customTitle,
       comment: this.state.comment,
     };
   }

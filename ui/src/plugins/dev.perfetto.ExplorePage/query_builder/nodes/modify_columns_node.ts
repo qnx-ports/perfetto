@@ -359,7 +359,6 @@ export interface ModifyColumnsSerializedState {
   newColumns: NewColumn[];
   selectedColumns: ColumnInfo[];
   filters?: FilterDefinition[];
-  customTitle?: string;
   comment?: string;
 }
 
@@ -368,7 +367,6 @@ export interface ModifyColumnsState extends QueryNodeState {
   newColumns: NewColumn[];
   selectedColumns: ColumnInfo[];
   filters?: FilterDefinition[];
-  customTitle?: string;
 }
 
 export class ModifyColumnsNode implements ModificationNode {
@@ -477,7 +475,7 @@ export class ModifyColumnsNode implements ModificationNode {
   }
 
   getTitle(): string {
-    return this.state.customTitle ?? 'Modify Columns';
+    return 'Modify Columns';
   }
 
   nodeDetails(): m.Child {
@@ -946,6 +944,10 @@ export class ModifyColumnsNode implements ModificationNode {
     }
 
     for (const col of this.state.newColumns) {
+      // Only include valid columns (non-empty expression and name)
+      if (!this.isNewColumnValid(col)) {
+        continue;
+      }
       const selectColumn = new protos.PerfettoSqlStructuredQuery.SelectColumn();
       selectColumn.columnNameOrExpression = col.expression;
       selectColumn.alias = col.name;
@@ -986,7 +988,6 @@ export class ModifyColumnsNode implements ModificationNode {
       newColumns: this.state.newColumns,
       selectedColumns: this.state.selectedColumns,
       filters: this.state.filters,
-      customTitle: this.state.customTitle,
       comment: this.state.comment,
     };
   }

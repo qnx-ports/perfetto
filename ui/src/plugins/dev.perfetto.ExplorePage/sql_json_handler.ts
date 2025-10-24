@@ -230,7 +230,6 @@ export function createGraphFromSql(sql: string): string {
       state: {
         sql: parsedNode.query,
         filters: [],
-        customTitle: nodeId,
       },
       nextNodes: [],
       prevNodes: [],
