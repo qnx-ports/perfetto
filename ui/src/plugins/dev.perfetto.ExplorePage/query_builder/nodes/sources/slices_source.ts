@@ -239,42 +239,42 @@ export function slicesSourceNodeColumns(checked: boolean): ColumnInfo[] {
       name: 'ts',
       type: {
         name: 'TIMESTAMP',
-        shortName: 'TIMESTAMP',
+        shortName: 'timestamp',
       },
     },
     {
       name: 'dur',
       type: {
         name: 'DURATION',
-        shortName: 'DURATION',
+        shortName: 'duration',
       },
     },
     {
       name: 'slice_name',
       type: {
         name: 'STRING',
-        shortName: 'STRING',
+        shortName: 'string',
       },
     },
     {
       name: 'thread_name',
       type: {
         name: 'STRING',
-        shortName: 'STRING',
+        shortName: 'string',
       },
     },
     {
       name: 'process_name',
       type: {
         name: 'STRING',
-        shortName: 'STRING',
+        shortName: 'string',
       },
     },
     {
       name: 'track_name',
       type: {
         name: 'STRING',
-        shortName: 'STRING',
+        shortName: 'string',
       },
     },
   ];

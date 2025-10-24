@@ -44,7 +44,7 @@ describe('JSON serialization/deserialization', () => {
     const stringType: SqlType = {name: 'STRING', shortName: 'string'};
     const timestampType: SqlType = {
       name: 'TIMESTAMP_NS',
-      shortName: 'timestamp_ns',
+      shortName: 'timestamp',
     };
 
     const tables = new Map<string, SqlTable>();

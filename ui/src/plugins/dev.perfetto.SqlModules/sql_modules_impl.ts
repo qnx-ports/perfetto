@@ -24,8 +24,10 @@ import {
   SqlTable,
   SqlTableFunction,
   SqlType,
+  SqlColumnTypeShort,
   TableAndColumn,
   createTableColumnFromPerfettoSql,
+  isValidSqlColumnTypeShort,
 } from './sql_modules';
 import {SqlTableDescription} from '../../components/widgets/sql/table/table_description';
 import {TableColumn} from '../../components/widgets/sql/table/table_column';
@@ -311,9 +313,22 @@ class StdlibColumnImpl implements SqlColumn {
   description: string;
 
   constructor(docs: DocsArgOrColSchemaType) {
+    const shortName = docs.type.split('(')[0].toLowerCase();
+
+    // Validate that the shortName is a valid SQL column type
+    let validatedShortName: SqlColumnTypeShort;
+    if (isValidSqlColumnTypeShort(shortName)) {
+      validatedShortName = shortName;
+    } else {
+      console.warn(
+        `Invalid SQL column type "${docs.type}" for column "${docs.name}". Using "unknown".`,
+      );
+      validatedShortName = 'unknown';
+    }
+
     this.type = {
       name: docs.type.toLowerCase(),
-      shortName: docs.type.split('(')[0].toLowerCase(),
+      shortName: validatedShortName,
       tableAndColumn:
         docs.table && docs.column
           ? new TableAndColumnImpl(

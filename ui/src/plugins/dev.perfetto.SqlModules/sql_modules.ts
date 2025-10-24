@@ -154,9 +154,39 @@ export interface TableAndColumn {
   isEqual(o: TableAndColumn): boolean;
 }
 
+// All supported SQL column types in Perfetto.
+// These are the only valid types that can come from SQL modules.
+export type SqlColumnType =
+  // Standard types
+  | 'LONG'
+  | 'DOUBLE'
+  | 'STRING'
+  | 'BOOL'
+  | 'BYTES'
+  // Special Perfetto types
+  | 'TIMESTAMP'
+  | 'DURATION'
+  | 'ID'
+  | 'JOINID'
+  | 'ARGSETID';
+
+// Short names for SQL column types (lowercase versions)
+export type SqlColumnTypeShort =
+  | 'long'
+  | 'double'
+  | 'string'
+  | 'bool'
+  | 'bytes'
+  | 'timestamp'
+  | 'duration'
+  | 'id'
+  | 'joinid'
+  | 'argsetid'
+  | 'unknown';
+
 export interface SqlType {
   readonly name: string;
-  readonly shortName: string;
+  readonly shortName: SqlColumnTypeShort;
   readonly tableAndColumn?: TableAndColumn;
 }
 
@@ -164,6 +194,43 @@ export const unknownType: SqlType = {
   name: 'unknown',
   shortName: 'unknown',
 };
+
+// Helper function to check if a string is a valid SQL column type
+export function isValidSqlColumnType(type: string): type is SqlColumnType {
+  const validTypes: SqlColumnType[] = [
+    'LONG',
+    'DOUBLE',
+    'STRING',
+    'BOOL',
+    'BYTES',
+    'TIMESTAMP',
+    'DURATION',
+    'ID',
+    'JOINID',
+    'ARGSETID',
+  ];
+  return validTypes.includes(type as SqlColumnType);
+}
+
+// Helper function to check if a string is a valid short SQL column type
+export function isValidSqlColumnTypeShort(
+  type: string,
+): type is SqlColumnTypeShort {
+  const validTypes: SqlColumnTypeShort[] = [
+    'long',
+    'double',
+    'string',
+    'bool',
+    'bytes',
+    'timestamp',
+    'duration',
+    'id',
+    'joinid',
+    'argsetid',
+    'unknown',
+  ];
+  return validTypes.includes(type as SqlColumnTypeShort);
+}
 
 export function createTableColumnFromPerfettoSql(
   trace: Trace,

@@ -35,6 +35,7 @@ import {
 import protos from '../../../../protos';
 import {FilterDefinition} from '../../../../components/widgets/data_grid/common';
 import {createFiltersProto, FilterOperation} from '../operations/filter';
+import {SqlColumnTypeShort} from '../../../dev.perfetto.SqlModules/sql_modules';
 
 class SwitchComponent
   implements
@@ -338,12 +339,20 @@ interface IfClause {
   then: string;
 }
 
+interface TypeSelectableColumn {
+  columnType?: SqlColumnTypeShort;
+  name: string;
+}
+
 interface NewColumn {
   expression: string;
   name: string;
   module?: string;
 
-  // For switch columns
+  // SQL column type (LONG, DOUBLE, STRING, etc.)
+  columnType?: SqlColumnTypeShort;
+
+  // For switch columns (UI rendering type, not SQL type)
   type?: 'switch' | 'if';
   switchOn?: string;
   cases?: {when: string; then: string}[];
@@ -414,6 +423,10 @@ export class ModifyColumnsNode implements ModificationNode {
         finalCols.push(columnInfoFromName(col.name, true));
       });
     return finalCols;
+  }
+
+  private isNewColumnValid(col: NewColumn): boolean {
+    return col.expression.trim() !== '' && col.name.trim() !== '';
   }
 
   onPrevNodesUpdated() {
@@ -526,7 +539,10 @@ export class ModifyColumnsNode implements ModificationNode {
       if (otherNewColumns.length > 0) {
         const newItems = otherNewColumns.map((c) => {
           const expression = c.expression.replace(' END', '');
-          return m('.', `${expression} AS ${c.name}`);
+          return m('.pf-column-expression', [
+            m('span', `${expression} AS ${c.name} `),
+            this.renderTypeBadge(c.columnType),
+          ]);
         });
         cards.push(
           m(Card, {className: 'pf-exp-node-details-card'}, ...newItems),
@@ -561,7 +577,10 @@ export class ModifyColumnsNode implements ModificationNode {
                 m('div', `SWITCH ON ${c.switchOn}`),
                 ...cases,
               ),
-              m('div.pf-exp-switch-alias', `AS ${c.name}`),
+              m('.pf-exp-switch-alias', [
+                m('span', `AS ${c.name} `),
+                this.renderTypeBadge(c.columnType),
+              ]),
             ),
           );
         }
@@ -587,7 +606,10 @@ export class ModifyColumnsNode implements ModificationNode {
               Card,
               {className: 'pf-exp-node-details-card pf-exp-if-details-card'},
               m('div.pf-exp-if-expression', ...clauses),
-              m('div.pf-exp-if-alias', `AS ${c.name}`),
+              m('.pf-exp-if-alias', [
+                m('span', `AS ${c.name} `),
+                this.renderTypeBadge(c.columnType),
+              ]),
             ),
           );
         }
@@ -634,6 +656,20 @@ export class ModifyColumnsNode implements ModificationNode {
     );
   }
 
+  private renderTypeBadge(
+    type?: SqlColumnTypeShort,
+    typeInfo?: {tableAndColumn?: {table: string; column: string}},
+  ): m.Child {
+    if (!type || type === 'unknown') {
+      return null;
+    }
+    let displayText = type.toUpperCase();
+    if (typeInfo?.tableAndColumn) {
+      displayText = `${displayText}(${typeInfo.tableAndColumn.table}.${typeInfo.tableAndColumn.column})`;
+    }
+    return m('span.pf-type-badge', displayText);
+  }
+
   private renderSelectedColumn(col: ColumnInfo, index: number): m.Child {
     return m(
       '.pf-column',
@@ -663,19 +699,22 @@ export class ModifyColumnsNode implements ModificationNode {
         },
         '☰',
       ),
-      m(Checkbox, {
-        checked: col.checked,
-        label: col.column.name,
-        onchange: (e) => {
-          const newSelectedColumns = [...this.state.selectedColumns];
-          newSelectedColumns[index] = {
-            ...newSelectedColumns[index],
-            checked: (e.target as HTMLInputElement).checked,
-          };
-          this.state.selectedColumns = newSelectedColumns;
-          this.state.onchange?.();
-        },
-      }),
+      m('.pf-column-name-with-type', [
+        m(Checkbox, {
+          checked: col.checked,
+          label: col.column.name,
+          onchange: (e) => {
+            const newSelectedColumns = [...this.state.selectedColumns];
+            newSelectedColumns[index] = {
+              ...newSelectedColumns[index],
+              checked: (e.target as HTMLInputElement).checked,
+            };
+            this.state.selectedColumns = newSelectedColumns;
+            this.state.onchange?.();
+          },
+        }),
+        this.renderTypeBadge(col.column.type.shortName, col.column.type),
+      ]),
       m(TextInput, {
         oninput: (e: Event) => {
           const newSelectedColumns = [...this.state.selectedColumns];
@@ -689,11 +728,52 @@ export class ModifyColumnsNode implements ModificationNode {
         placeholder: 'alias',
         value: col.alias ? col.alias : '',
       }),
+      this.renderTypeSelector(col, (newType) => {
+        const newSelectedColumns = [...this.state.selectedColumns];
+        newSelectedColumns[index] = {
+          ...newSelectedColumns[index],
+          columnType: newType,
+        };
+        this.state.selectedColumns = newSelectedColumns;
+        this.state.onchange?.();
+      }),
     );
   }
 
-  private isNewColumnValid(col: NewColumn): boolean {
-    return col.expression.trim() !== '' && col.name.trim() !== '';
+  private renderTypeSelector(
+    col: TypeSelectableColumn,
+    onTypeChange: (newType: SqlColumnTypeShort | undefined) => void,
+  ): m.Child {
+    const allTypes: SqlColumnTypeShort[] = [
+      'long',
+      'double',
+      'string',
+      'bool',
+      'bytes',
+      'timestamp',
+      'duration',
+    ];
+
+    return m(
+      Select,
+      {
+        value: col.columnType || '',
+        onchange: (e: Event) => {
+          const selectedType = (e.target as HTMLSelectElement).value;
+          onTypeChange(
+            selectedType === ''
+              ? undefined
+              : (selectedType as SqlColumnTypeShort),
+          );
+        },
+      },
+      [
+        m('option', {value: ''}, 'Type (optional)'),
+        ...allTypes.map((type) =>
+          m('option', {value: type}, type.toUpperCase()),
+        ),
+      ],
+    );
   }
 
   private renderNewColumn(col: NewColumn, index: number): m.Child {
@@ -792,6 +872,15 @@ export class ModifyColumnsNode implements ModificationNode {
           placeholder: 'name',
           value: col.name,
         }),
+        this.renderTypeSelector(col, (newType) => {
+          const newNewColumns = [...this.state.newColumns];
+          newNewColumns[index] = {
+            ...newNewColumns[index],
+            columnType: newType,
+          };
+          this.state.newColumns = newNewColumns;
+          this.state.onchange?.();
+        }),
         !this.isNewColumnValid(col) && m(Icon, {icon: 'warning'}),
       ]);
     }
@@ -823,6 +912,15 @@ export class ModifyColumnsNode implements ModificationNode {
           },
           placeholder: 'name',
           value: col.name,
+        }),
+        this.renderTypeSelector(col, (newType) => {
+          const newNewColumns = [...this.state.newColumns];
+          newNewColumns[index] = {
+            ...newNewColumns[index],
+            columnType: newType,
+          };
+          this.state.newColumns = newNewColumns;
+          this.state.onchange?.();
         }),
         !this.isNewColumnValid(col) && m(Icon, {icon: 'warning'}),
       ]);
@@ -856,6 +954,15 @@ export class ModifyColumnsNode implements ModificationNode {
         },
         placeholder: 'name',
         value: col.name,
+      }),
+      this.renderTypeSelector(col, (newType) => {
+        const newNewColumns = [...this.state.newColumns];
+        newNewColumns[index] = {
+          ...newNewColumns[index],
+          columnType: newType,
+        };
+        this.state.newColumns = newNewColumns;
+        this.state.onchange?.();
       }),
       !isValid && m(Icon, {icon: 'warning'}),
     ]);

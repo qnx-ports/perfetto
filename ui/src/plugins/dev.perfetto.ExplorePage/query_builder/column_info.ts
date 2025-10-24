@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {SqlColumn} from '../../dev.perfetto.SqlModules/sql_modules';
+import {
+  SqlColumn,
+  SqlColumnTypeShort,
+} from '../../dev.perfetto.SqlModules/sql_modules';
 
 export interface ColumnInfo {
   name: string;
@@ -20,6 +23,7 @@ export interface ColumnInfo {
   checked: boolean;
   column: SqlColumn;
   alias?: string;
+  columnType?: SqlColumnTypeShort;
 }
 
 export function columnInfoFromSqlColumn(
@@ -31,6 +35,8 @@ export function columnInfoFromSqlColumn(
     type: column.type.name,
     checked,
     column: column,
+    columnType:
+      column.type.shortName === 'unknown' ? undefined : column.type.shortName,
   };
 }
 
@@ -42,7 +48,8 @@ export function columnInfoFromName(
     name,
     type: 'NA',
     checked,
-    column: {name, type: {name: 'NA', shortName: 'NA'}},
+    column: {name, type: {name: 'NA', shortName: 'unknown'}},
+    columnType: undefined,
   };
 }
 

@@ -28,6 +28,7 @@ import {
   columnInfoFromName,
   newColumnInfoList,
 } from '../column_info';
+import {SqlColumnTypeShort} from '../../../dev.perfetto.SqlModules/sql_modules';
 import {createFiltersProto, FilterOperation} from '../operations/filter';
 import {FilterDefinition} from '../../../../components/widgets/data_grid/common';
 import {MultiselectInput} from '../../../../widgets/multiselect_input';
@@ -75,9 +76,25 @@ export class AggregationNode implements ModificationNode {
   get finalCols(): ColumnInfo[] {
     const selected = this.state.groupByColumns.filter((c) => c.checked);
     for (const agg of this.state.aggregations) {
-      selected.push(
-        columnInfoFromName(agg.newColumnName ?? placeholderNewColumnName(agg)),
-      );
+      const colName = agg.newColumnName ?? placeholderNewColumnName(agg);
+      const resultType = agg.aggregationOp
+        ? getAggregationResultType(agg.aggregationOp, agg.column)
+        : 'unknown';
+
+      const colInfo: ColumnInfo = {
+        name: colName,
+        type: resultType.toUpperCase(),
+        checked: true,
+        column: {
+          name: colName,
+          type: {
+            name: resultType.toUpperCase(),
+            shortName: resultType,
+          },
+        },
+        columnType: resultType === 'unknown' ? undefined : resultType,
+      };
+      selected.push(colInfo);
     }
     return newColumnInfoList(selected, true);
   }
@@ -391,6 +408,33 @@ const AGGREGATION_OPS = [
   'MEAN',
   'DURATION_WEIGHTED_MEAN',
 ] as const;
+
+function getAggregationResultType(
+  op: string,
+  sourceColumn?: ColumnInfo,
+): SqlColumnTypeShort {
+  switch (op) {
+    case 'COUNT':
+      return 'long';
+    case 'MEAN':
+    case 'DURATION_WEIGHTED_MEAN':
+      return 'double';
+    case 'SUM':
+    case 'MIN':
+    case 'MAX':
+      // Preserve the source column type for these operations
+      if (
+        sourceColumn?.column?.type?.shortName &&
+        sourceColumn.column.type.shortName !== 'unknown'
+      ) {
+        return sourceColumn.column.type.shortName;
+      }
+      // Default to double for numeric aggregations
+      return 'double';
+    default:
+      return 'unknown';
+  }
+}
 
 interface AggregationOperationComponentAttrs {
   groupByColumns: ColumnInfo[];

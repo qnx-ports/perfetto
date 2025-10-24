@@ -37,10 +37,37 @@
   }
 
   .pf-column {
+    display: grid;
+    grid-template-columns: auto 1fr minmax(120px, 200px) minmax(120px, 180px) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
+  }
+
+  .pf-column-name-with-type {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 1px 0;
+  }
+
+  .pf-type-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1;
+    color: #5e6c84;
+    background-color: #dfe1e6;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .pf-column-expression {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .pf-drag-handle {
@@ -94,6 +121,9 @@
 }
 
 .pf-exp-switch-alias {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-family: var(--pf-font-family-monospace);
   font-style: italic;
   color: var(--pf-text-color-light);
@@ -129,6 +159,9 @@
 }
 
 .pf-exp-if-alias {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-family: var(--pf-font-family-monospace);
   font-style: italic;
   color: var(--pf-text-color-light);
