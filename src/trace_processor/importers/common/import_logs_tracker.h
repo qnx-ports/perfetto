@@ -44,6 +44,15 @@ class ImportLogsTracker {
       int64_t byte_offset,
       std::function<void(ArgsTracker::BoundInserter&)> args_callback = {});
 
+  // Overload for size_t byte offset (e.g., from TraceBlobView::offset())
+  void RecordTokenizationError(
+      size_t stat_key,
+      size_t byte_offset,
+      std::function<void(ArgsTracker::BoundInserter&)> args_callback = {}) {
+    RecordTokenizationError(stat_key, static_cast<int64_t>(byte_offset),
+                            std::move(args_callback));
+  }
+
   // For "parser" errors (post-parsing, have timestamp + context)
   // Use when you have a parsed event but it's invalid/problematic.
   void RecordParserError(

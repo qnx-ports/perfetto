@@ -63,10 +63,12 @@ class TrackEventTokenizer {
   ModuleResult TokenizeTrackDescriptorPacket(
       RefPtr<PacketSequenceStateGeneration> state,
       const protos::pbzero::TracePacket_Decoder&,
+      TraceBlobView* packet,
       int64_t packet_timestamp);
   ModuleResult TokenizeThreadDescriptorPacket(
       RefPtr<PacketSequenceStateGeneration> state,
-      const protos::pbzero::TracePacket_Decoder&);
+      const protos::pbzero::TracePacket_Decoder&,
+      TraceBlobView* packet);
   ModuleResult TokenizeTrackEventPacket(
       RefPtr<PacketSequenceStateGeneration> state,
       const protos::pbzero::TracePacket_Decoder&,
@@ -99,6 +101,7 @@ class TrackEventTokenizer {
 
   const StringId counter_name_thread_time_id_;
   const StringId counter_name_thread_instruction_count_id_;
+  const StringId track_uuid_key_id_;
 
   std::array<StringId, 4> counter_unit_ids_;
 };

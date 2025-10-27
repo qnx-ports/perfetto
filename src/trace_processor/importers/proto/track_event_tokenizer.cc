@@ -38,6 +38,7 @@
 #include "protos/perfetto/trace/interned_data/interned_data.pbzero.h"
 #include "protos/perfetto/trace/track_event/debug_annotation.pbzero.h"
 #include "src/trace_processor/importers/common/clock_tracker.h"
+#include "src/trace_processor/importers/common/import_logs_tracker.h"
 #include "src/trace_processor/importers/common/legacy_v8_cpu_profile_tracker.h"
 #include "src/trace_processor/importers/common/metadata_tracker.h"
 #include "src/trace_processor/importers/common/parser_types.h"
@@ -95,6 +96,7 @@ TrackEventTokenizer::TrackEventTokenizer(
           context_->storage->InternString("thread_time")),
       counter_name_thread_instruction_count_id_(
           context_->storage->InternString("thread_instruction_count")),
+      track_uuid_key_id_(context_->storage->InternString("track_uuid")),
       counter_unit_ids_{{kNullStringId, context_->storage->InternString("ns"),
                          context_->storage->InternString("count"),
                          context_->storage->InternString("bytes")}} {
@@ -121,6 +123,7 @@ ModuleResult TrackEventTokenizer::TokenizeRangeOfInterestPacket(
 ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
     RefPtr<PacketSequenceStateGeneration> state,
     const protos::pbzero::TracePacket::Decoder& packet,
+    TraceBlobView* packet_blob,
     int64_t packet_timestamp) {
   using TrackDescriptorProto = protos::pbzero::TrackDescriptor;
   using Reservation = TrackEventTracker::DescriptorTrackReservation;
@@ -131,8 +134,8 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
   Reservation reservation;
 
   if (!track.has_uuid()) {
-    PERFETTO_ELOG("TrackDescriptor packet without uuid");
-    context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
+    context_->import_logs_tracker->RecordTokenizationError(
+        stats::track_descriptor_missing_uuid, packet_blob->offset());
     return ModuleResult::Handled();
   }
 
@@ -213,10 +216,12 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
     protos::pbzero::ThreadDescriptor::Decoder thread(track.thread());
 
     if (!thread.has_pid() || !thread.has_tid()) {
-      PERFETTO_ELOG(
-          "No pid or tid in ThreadDescriptor for track with uuid %" PRIu64,
-          track.uuid());
-      context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
+      context_->import_logs_tracker->RecordTokenizationError(
+          stats::track_descriptor_thread_missing_pid_tid, packet_blob->offset(),
+          [&](ArgsTracker::BoundInserter& inserter) {
+            inserter.AddArg(track_uuid_key_id_,
+                            Variadic::UnsignedInteger(track.uuid()));
+          });
       return ModuleResult::Handled();
     }
 
@@ -248,9 +253,12 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
     protos::pbzero::ProcessDescriptor::Decoder process(track.process());
 
     if (!process.has_pid()) {
-      PERFETTO_ELOG("No pid in ProcessDescriptor for track with uuid %" PRIu64,
-                    track.uuid());
-      context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
+      context_->import_logs_tracker->RecordTokenizationError(
+          stats::track_descriptor_process_missing_pid, packet_blob->offset(),
+          [&](ArgsTracker::BoundInserter& inserter) {
+            inserter.AddArg(track_uuid_key_id_,
+                            Variadic::UnsignedInteger(track.uuid()));
+          });
       return ModuleResult::Handled();
     }
 
@@ -342,10 +350,11 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
 
 ModuleResult TrackEventTokenizer::TokenizeThreadDescriptorPacket(
     RefPtr<PacketSequenceStateGeneration> state,
-    const protos::pbzero::TracePacket::Decoder& packet) {
+    const protos::pbzero::TracePacket::Decoder& packet,
+    TraceBlobView* packet_blob) {
   if (PERFETTO_UNLIKELY(!packet.has_trusted_packet_sequence_id())) {
-    PERFETTO_ELOG("ThreadDescriptor packet without trusted_packet_sequence_id");
-    context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
+    context_->import_logs_tracker->RecordTokenizationError(
+        stats::thread_descriptor_missing_sequence_id, packet_blob->offset());
     return ModuleResult::Handled();
   }
 
@@ -381,8 +390,8 @@ ModuleResult TrackEventTokenizer::TokenizeTrackEventPacket(
     TraceBlobView* packet_blob,
     int64_t packet_timestamp) {
   if (PERFETTO_UNLIKELY(!packet.has_trusted_packet_sequence_id())) {
-    PERFETTO_ELOG("TrackEvent packet without trusted_packet_sequence_id");
-    context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
+    context_->import_logs_tracker->RecordTokenizationError(
+        stats::track_event_missing_sequence_id, packet_blob->offset());
     return ModuleResult::Handled();
   }
 
@@ -426,8 +435,8 @@ ModuleResult TrackEventTokenizer::TokenizeTrackEventPacket(
   } else if (packet.has_timestamp()) {
     timestamp = packet_timestamp;
   } else {
-    PERFETTO_ELOG("TrackEvent without valid timestamp");
-    context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
+    context_->import_logs_tracker->RecordTokenizationError(
+        stats::track_event_missing_timestamp, packet_blob->offset());
     return ModuleResult::Handled();
   }
 

@@ -592,12 +592,104 @@ namespace perfetto::trace_processor::stats {
       "is incomplete or truncated, or due to a bug in simpleperf. Try "        \
       "re-recording the profile and ensure the file is not truncated. If "     \
       "this occurs consistently, please report it to the simpleperf team."),   \
-  F(slice_negative_duration,                    kSingle,  kError,  kAnalysis,   \
+  F(slice_negative_duration,                    kSingle,  kError,  kAnalysis,  \
       "Number of slices dropped due to negative duration. This usually "       \
       "indicates incorrect timestamps in the trace data."),                    \
-  F(gpu_work_period_negative_duration,          kSingle,  kError,  kAnalysis,   \
+  F(gpu_work_period_negative_duration,          kSingle,  kError,  kAnalysis,  \
       "Number of GPU work period events with negative duration (end < start). "\
-      "Check the GPU driver for timestamp bugs.")
+      "Check the GPU driver for timestamp bugs."),                             \
+  F(track_descriptor_missing_uuid,              kSingle,  kError,  kAnalysis,  \
+      "A TrackDescriptor packet was received without a uuid field. The uuid "  \
+      "is required to uniquely identify tracks and associate events with "     \
+      "them. Without it, the track cannot be created and any events "          \
+      "referencing this track will be dropped. This indicates a bug in the "   \
+      "trace producer or trace conversion tool. Ensure your trace producer "   \
+      "or conversion tool assigns a unique uuid to each TrackDescriptor."),    \
+  F(track_descriptor_thread_missing_pid_tid,    kSingle,  kError,  kAnalysis,  \
+      "A ThreadDescriptor within a TrackDescriptor packet is missing "         \
+      "required pid or tid fields. Both fields are necessary to associate "    \
+      "the track with a specific thread. The track will be ignored and any "   \
+      "events on it will be dropped. This indicates a bug in the trace "       \
+      "producer or trace conversion tool. Ensure ThreadDescriptor packets "    \
+      "include both pid and tid fields."),                                     \
+  F(track_descriptor_process_missing_pid,       kSingle,  kError,  kAnalysis,  \
+      "A ProcessDescriptor within a TrackDescriptor packet is missing the "    \
+      "required pid field. The pid is necessary to associate the track with "  \
+      "a specific process. The track will be ignored and any events on it "    \
+      "will be dropped. This indicates a bug in the trace producer or trace "  \
+      "conversion tool. Ensure ProcessDescriptor packets include a valid "     \
+      "pid field."),                                                           \
+  F(track_event_missing_sequence_id,            kSingle,  kError,  kAnalysis,  \
+      "A TrackEvent packet was received without a trusted_packet_sequence_id " \
+      "field. This field is required for tracking incremental state (interned "\
+      "data like strings, track associations, etc.). Without it, the event "   \
+      "cannot be properly decoded and will be dropped. This indicates a bug "  \
+      "in the trace producer or trace conversion tool. Ensure each packet "    \
+      "sequence has a unique trusted_packet_sequence_id."),                    \
+  F(track_event_missing_timestamp,              kSingle,  kError,  kAnalysis,  \
+      "A TrackEvent packet was received without a valid timestamp. Events "    \
+      "must have either a timestamp_delta_us, timestamp_absolute_us, or the "  \
+      "containing TracePacket must have a timestamp field. Without a "         \
+      "timestamp, the event cannot be placed in the trace timeline and will "  \
+      "be dropped. This indicates a bug in the trace producer or trace "       \
+      "conversion tool, or data corruption. Ensure all events have valid "     \
+      "timestamps."),                                                          \
+  F(thread_descriptor_missing_sequence_id,      kSingle,  kError,  kAnalysis,  \
+      "A ThreadDescriptor packet was received without a "                      \
+      "trusted_packet_sequence_id field. This field is required to associate " \
+      "the thread descriptor with the correct packet sequence for incremental "\
+      "state tracking. Without it, delta-encoded timestamps and other "        \
+      "incremental data cannot be properly decoded. The descriptor will be "   \
+      "ignored. This indicates a bug in the trace producer or trace "          \
+      "conversion tool. Ensure ThreadDescriptor packets include "              \
+      "trusted_packet_sequence_id on all packets."),                           \
+  F(incremental_state_cleared_missing_sequence_id, kSingle, kError, kAnalysis, \
+      "A packet with incremental_state_cleared set was received without "      \
+      "trusted_packet_sequence_id. This field is required to identify which "  \
+      "packet sequence's incremental state should be cleared. Without it, "    \
+      "incremental state cannot be properly managed and subsequent packets "   \
+      "may fail to decode. This indicates a bug in the trace producer or "     \
+      "trace conversion tool."),                                               \
+  F(previous_packet_dropped_missing_sequence_id, kSingle, kError, kAnalysis,   \
+      "A packet with previous_packet_dropped set was received without "        \
+      "trusted_packet_sequence_id. This field is required to identify which "  \
+      "packet sequence experienced packet loss. Without it, packet loss "      \
+      "cannot be properly tracked and incremental state may become "           \
+      "corrupted. This indicates a bug in the trace producer or trace "        \
+      "conversion tool."),                                                     \
+  F(trace_packet_defaults_missing_sequence_id, kSingle, kError, kAnalysis,     \
+      "A TracePacketDefaults packet was received without "                     \
+      "trusted_packet_sequence_id. This field is required to associate the "   \
+      "defaults with the correct packet sequence. Without it, the defaults "   \
+      "cannot be applied and subsequent packets may not decode correctly. "    \
+      "This indicates a bug in the trace producer or trace conversion tool."), \
+  F(interned_data_missing_sequence_id, kSingle, kError, kAnalysis,             \
+      "An InternedData packet was received without "                           \
+      "trusted_packet_sequence_id. This field is required to associate "       \
+      "interned data (strings, tracks, etc.) with the correct packet "         \
+      "sequence. Without it, the interned data cannot be used and subsequent " \
+      "packets will fail to decode. This indicates a bug in the trace "        \
+      "producer or trace conversion tool."),                                   \
+  F(track_event_track_hierarchy_loop,           kSingle,  kError,  kAnalysis,  \
+      "A track hierarchy loop was detected where a track is its own ancestor " \
+      "through parent_uuid references. This creates a circular dependency "    \
+      "that cannot be resolved. The track will not be properly associated "    \
+      "with its ancestors. This indicates corrupted or malformed track "       \
+      "descriptors in the trace. Check that parent_uuid references form a "    \
+      "valid tree structure."),                                                \
+  F(track_event_track_hierarchy_too_deep,       kSingle,  kError,  kAnalysis,  \
+      "A track hierarchy exceeds the maximum depth of 100 ancestors. This "    \
+      "either indicates an extremely deep (and likely incorrect) track "       \
+      "structure, or a loop that wasn't detected. The track will not be "      \
+      "properly resolved. This indicates corrupted or malformed track "        \
+      "descriptors. Review the track parent_uuid relationships."),             \
+  F(heap_graph_non_finalized_graph,             kSingle,  kDataLoss, kTrace,   \
+      "Heap graph profile was not finalized before the trace ended. Packet "   \
+      "loss was detected (missing packet indices) which means the profile is " \
+      "incomplete. Some objects and references may be missing from the heap "  \
+      "graph. This typically occurs when the profiled process crashes or is "  \
+      "killed before completing the profile. To get complete profiles, ensure "\
+      "the process finishes cleanly or increase the profiling timeout.")
 // clang-format on
 
 enum Type {
