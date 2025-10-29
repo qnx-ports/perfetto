@@ -198,6 +198,10 @@ SockaddrAny MakeSockAddr(SockFamily family, const std::string& socket_name) {
       struct addrinfo* addr_info = nullptr;
       struct addrinfo hints{};
       hints.ai_family = AF_INET;
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_QNX) && (_NTO_VERSION <= 710)
+      hints.ai_family = AF_UNSPEC;
+      hints.ai_socktype = SOCK_STREAM;
+#endif
       PERFETTO_CHECK(getaddrinfo(parts[0].c_str(), parts[1].c_str(), &hints,
                                  &addr_info) == 0);
       PERFETTO_CHECK(addr_info->ai_family == AF_INET);

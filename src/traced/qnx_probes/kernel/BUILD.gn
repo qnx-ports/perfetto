@@ -1,0 +1,73 @@
+# Copyright (C) 2018 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("../../../../gn/test.gni")
+
+source_set("kernel") {
+  public_deps = [ "../../../tracing/core" ]
+  deps = [
+    "..:data_source",
+     "../../../../gn:default_deps",
+     "../../../../include/perfetto/ext/traced",
+     "../../../../protos/perfetto/common:zero",
+     "../../../../protos/perfetto/config/sys_stats:zero",
+     "../../../../protos/perfetto/trace:zero",
+     "../../../../protos/perfetto/trace/sys_stats:zero",
+     "../../../base",
+#     "../common",
+  ]
+  sources = [
+    "parser/dynamic_buffer.h",
+    "parser/dynamic_buffer.cc",
+    "parser/trace_header.h",
+    "parser/trace_header.cc",
+    "parser/multi_part_event.h",
+    "parser/multi_part_event.cc",
+    "parser/trace_event_queue.h",
+    "parser/trace_event_queue.cc",
+    "parser/cpu_context.h",
+    "parser/cpu_context.cc",
+    "parser/trace_decoder.h",
+    "parser/trace_decoder.cc",
+    "parser/trace_parser.h",
+    "parser/trace_parser.cc",
+    "parser/trace_print.h",
+    "parser/trace_print.cc",
+    "parser/page_cache.h",
+    "parser/page_cache.cc",
+    "trace_handler.h",
+    "trace_handler.cc",
+    "process_info_cache.cc",
+    "process_info_cache.h",
+    "kernel_data_source.h",
+    "kernel_data_source.cc",
+    "kernel_trace_config.h",
+    "kernel_trace_config.cc",
+  ]
+}
+
+#perfetto_unittest_source_set("unittests") {
+#  testonly = true
+#  deps = [
+#    ":sys_stats",
+#    "../../../../gn:default_deps",
+#    "../../../../gn:gtest_and_gmock",
+#    "../../../../protos/perfetto/config/sys_stats:cpp",
+#    "../../../../protos/perfetto/trace/sys_stats:cpp",
+#    "../../../../src/base:test_support",
+#    "../../../../src/tracing/test:test_support",
+#    "../common:test_support",
+#  ]
+#  sources = [ "sys_stats_data_source_unittest.cc" ]
+#}

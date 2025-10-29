@@ -136,7 +136,7 @@ config("protobuf_config") {
   configs = [ "//gn:protobuf_gen_config" ]
 
   defines = [ "HAVE_PTHREAD=1" ]
-  cflags = []
+  cflags = ["-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=0"]
 
   # Fixed upstream in:
   # https://github.com/protocolbuffers/protobuf/pull/10112

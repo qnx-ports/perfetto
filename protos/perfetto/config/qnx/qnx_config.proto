@@ -1,0 +1,13 @@
+
+syntax = "proto2";
+
+package perfetto.protos;
+
+message QnxConfig {
+  optional uint32 qnx_kernel_buffers = 1;
+  optional uint32 qnx_kernel_kbuffers = 2;
+  optional bool qnx_kernel_wide_events = 3;
+  optional uint32 qnx_cache_pages = 4;
+  optional int32 qnx_cache_max_pages = 5;
+  optional uint32 qnx_trace_buffer_init_bytes = 6;
+}

@@ -364,7 +364,7 @@ config("default") {
       "-D_LARGEFILE_SOURCE",
       "-D_LARGEFILE64_SOURCE",
     ]
-    libs += [ "socket" ]
+    libs += [ "socket", "tracelog" ]
   }
 
   if (is_win && !is_clang) {

@@ -44,6 +44,10 @@ if (enable_perfetto_platform_services) {
   }
 }
 
+if (enable_perfetto_traced_qnx_probes) {
+  all_targets += ["src/traced/qnx_probes:traced_qnx_probes"]
+}
+
 if (enable_perfetto_trace_processor && enable_perfetto_trace_processor_sqlite) {
   if (enable_perfetto_grpc) {
     all_targets += [ "src/bigtrace/orchestrator:orchestrator_main" ]

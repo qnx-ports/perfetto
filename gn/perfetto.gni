@@ -312,6 +312,9 @@ declare_args() {
   enable_perfetto_traced_probes =
       enable_perfetto_platform_services && !is_win && !is_qnx
 
+  enable_perfetto_traced_qnx_probes =
+      enable_perfetto_platform_services && is_qnx
+
   # The relay service is enabled when platform services are enabled.
   # TODO(chinglinyu) check if we can enable on Windows.
   enable_perfetto_traced_relay = enable_perfetto_platform_services && !is_win
