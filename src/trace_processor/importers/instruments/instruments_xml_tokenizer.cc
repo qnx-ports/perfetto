@@ -149,9 +149,9 @@ class InstrumentsXmlTokenizer::Impl {
   explicit Impl(TraceProcessorContext* context)
       : context_(context),
         data_(),
+        parser_(XML_ParserCreate(nullptr)),
         stream_(context->sorter->CreateStream(
             std::make_unique<RowParser>(context, data_))) {
-    parser_ = XML_ParserCreate(nullptr);
     XML_SetElementHandler(parser_, ElementStart, ElementEnd);
     XML_SetCharacterDataHandler(parser_, CharacterData);
     XML_SetUserData(parser_, this);
@@ -159,7 +159,7 @@ class InstrumentsXmlTokenizer::Impl {
     static constexpr std::string_view kSubsystem =
         "dev.perfetto.instruments_clock";
     clock_ = static_cast<ClockTracker::ClockId>(
-        base::FnvHasher::Combine(kSubsystem) | 0x80000000);
+        base::MurmurHashValue(kSubsystem) | 0x80000000);
 
     // Use the above clock if we can, in case there is no other trace and
     // no clock sync events.

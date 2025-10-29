@@ -470,6 +470,14 @@ class TraceStorage {
 
   tables::ModulesTable* mutable_modules_table() { return &modules_table_; }
 
+  const tables::TraceImportLogsTable& trace_import_logs_table() const {
+    return trace_import_logs_table_;
+  }
+
+  tables::TraceImportLogsTable* mutable_trace_import_logs_table() {
+    return &trace_import_logs_table_;
+  }
+
   const tables::ClockSnapshotTable& clock_snapshot_table() const {
     return clock_snapshot_table_;
   }
@@ -617,6 +625,22 @@ class TraceStorage {
 
   tables::HeapGraphReferenceTable* mutable_heap_graph_reference_table() {
     return &heap_graph_reference_table_;
+  }
+
+  const tables::AggregateProfileTable& aggregate_profile_table() const {
+    return aggregate_profile_table_;
+  }
+
+  tables::AggregateProfileTable* mutable_aggregate_profile_table() {
+    return &aggregate_profile_table_;
+  }
+
+  const tables::AggregateSampleTable& aggregate_sample_table() const {
+    return aggregate_sample_table_;
+  }
+
+  tables::AggregateSampleTable* mutable_aggregate_sample_table() {
+    return &aggregate_sample_table_;
   }
 
   const tables::VulkanMemoryAllocationsTable& vulkan_memory_allocations_table()
@@ -877,6 +901,15 @@ class TraceStorage {
     return &windowmanager_table_;
   }
 
+  const tables::WindowManagerWindowContainerTable&
+  windowmanager_windowcontainer_table() const {
+    return windowmanager_windowcontainer_table_;
+  }
+  tables::WindowManagerWindowContainerTable*
+  mutable_windowmanager_windowcontainer_table() {
+    return &windowmanager_windowcontainer_table_;
+  }
+
   const tables::WindowManagerShellTransitionsTable&
   window_manager_shell_transitions_table() const {
     return window_manager_shell_transitions_table_;
@@ -1085,6 +1118,8 @@ class TraceStorage {
 
   tables::ModulesTable modules_table_{&string_pool_};
 
+  tables::TraceImportLogsTable trace_import_logs_table_{&string_pool_};
+
   // Contains data from all the clock snapshots in the trace.
   tables::ClockSnapshotTable clock_snapshot_table_{&string_pool_};
 
@@ -1165,6 +1200,8 @@ class TraceStorage {
   tables::HeapGraphObjectTable heap_graph_object_table_{&string_pool_};
   tables::HeapGraphClassTable heap_graph_class_table_{&string_pool_};
   tables::HeapGraphReferenceTable heap_graph_reference_table_{&string_pool_};
+  tables::AggregateProfileTable aggregate_profile_table_{&string_pool_};
+  tables::AggregateSampleTable aggregate_sample_table_{&string_pool_};
 
   tables::VulkanMemoryAllocationsTable vulkan_memory_allocations_table_{
       &string_pool_};
@@ -1231,6 +1268,8 @@ class TraceStorage {
   tables::ViewCaptureInternedDataTable viewcapture_interned_data_table_{
       &string_pool_};
   tables::WindowManagerTable windowmanager_table_{&string_pool_};
+  tables::WindowManagerWindowContainerTable
+      windowmanager_windowcontainer_table_{&string_pool_};
   tables::WindowManagerShellTransitionsTable
       window_manager_shell_transitions_table_{&string_pool_};
   tables::WindowManagerShellTransitionHandlersTable
@@ -1323,21 +1362,6 @@ struct std::hash<
            std::hash<std::optional<::perfetto::trace_processor::MappingId>>{}(
                r.mapping) ^
            std::hash<int64_t>{}(r.rel_pc);
-  }
-};
-
-template <>
-struct std::hash<
-    ::perfetto::trace_processor::tables::StackProfileCallsiteTable::Row> {
-  using argument_type =
-      ::perfetto::trace_processor::tables::StackProfileCallsiteTable::Row;
-  using result_type = size_t;
-
-  result_type operator()(const argument_type& r) const {
-    return std::hash<int64_t>{}(r.depth) ^
-           std::hash<std::optional<::perfetto::trace_processor::CallsiteId>>{}(
-               r.parent_id) ^
-           std::hash<::perfetto::trace_processor::FrameId>{}(r.frame_id);
   }
 };
 

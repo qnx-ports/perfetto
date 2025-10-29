@@ -437,6 +437,39 @@ TEST(StructuredQueryGeneratorTest, Median) {
   )"));
 }
 
+TEST(StructuredQueryGeneratorTest, Percentile) {
+  StructuredQueryGenerator gen;
+  auto proto = ToProto(R"(
+    id: "table_source_thread_slice"
+    table: {
+      table_name: "thread_slice"
+      column_names: "name"
+      column_names: "dur"
+    }
+    referenced_modules: "slices.with_context"
+    group_by: {
+      column_names: "name"
+      aggregates: {
+        column_name: "dur"
+        op: PERCENTILE
+        result_column_name: "cheese"
+        percentile: 99
+      }
+    }
+  )");
+  auto ret = gen.Generate(proto.data(), proto.size());
+  ASSERT_OK_AND_ASSIGN(std::string res, ret);
+  ASSERT_THAT(res.c_str(), EqualsIgnoringWhitespace(R"(
+    WITH sq_table_source_thread_slice AS
+      (SELECT
+        name,
+        PERCENTILE(dur, 99.000000) AS cheese
+      FROM thread_slice
+      GROUP BY name)
+    SELECT * FROM sq_table_source_thread_slice
+  )"));
+}
+
 TEST(StructuredQueryGeneratorTest, CycleDetection) {
   StructuredQueryGenerator gen;
   auto proto_a = ToProto(R"(
@@ -703,6 +736,141 @@ TEST(StructuredQueryGeneratorTest, TableSourceWithDeprecatedModuleName) {
               )"));
   ASSERT_THAT(gen.ComputeReferencedModules(),
               UnorderedElementsAre("linux.memory.process"));
+}
+
+TEST(StructuredQueryGeneratorTest, CountAllAggregation) {
+  StructuredQueryGenerator gen;
+  auto proto = ToProto(R"(
+    table: {
+      table_name: "slice"
+    }
+    group_by: {
+      column_names: "name"
+      aggregates: {
+        op: COUNT
+        result_column_name: "slice_count"
+      }
+    }
+  )");
+  auto ret = gen.Generate(proto.data(), proto.size());
+  ASSERT_OK_AND_ASSIGN(std::string res, ret);
+  ASSERT_THAT(res, EqualsIgnoringWhitespace(R"(
+    WITH sq_0 AS (
+      SELECT
+        name,
+        COUNT(*) AS slice_count
+      FROM slice
+      GROUP BY name
+    )
+    SELECT * FROM sq_0
+  )"));
+}
+
+TEST(StructuredQueryGeneratorTest, AggregateToStringValidation) {
+  // SUM without column name.
+  {
+    StructuredQueryGenerator gen;
+    auto proto = ToProto(R"(
+      table: {
+        table_name: "slice"
+      }
+      group_by: {
+        column_names: "name"
+        aggregates: {
+          op: SUM
+          result_column_name: "slice_sum"
+        }
+      }
+    )");
+    auto ret = gen.Generate(proto.data(), proto.size());
+    ASSERT_FALSE(ret.ok());
+  }
+
+  // PERCENTILE without percentile.
+  {
+    StructuredQueryGenerator gen;
+    auto proto = ToProto(R"(
+      table: {
+        table_name: "slice"
+      }
+      group_by: {
+        column_names: "name"
+        aggregates: {
+          op: PERCENTILE
+          column_name: "dur"
+          result_column_name: "slice_percentile"
+        }
+      }
+    )");
+    auto ret = gen.Generate(proto.data(), proto.size());
+    ASSERT_FALSE(ret.ok());
+  }
+
+  // PERCENTILE without column name.
+  {
+    StructuredQueryGenerator gen;
+    auto proto = ToProto(R"(
+      table: {
+        table_name: "slice"
+      }
+      group_by: {
+        column_names: "name"
+        aggregates: {
+          op: PERCENTILE
+          percentile: 99
+          result_column_name: "slice_percentile"
+        }
+      }
+    )");
+    auto ret = gen.Generate(proto.data(), proto.size());
+    ASSERT_FALSE(ret.ok());
+  }
+}
+
+TEST(StructuredQueryGeneratorTest, ColumnTransformationAndAggregation) {
+  StructuredQueryGenerator gen;
+  auto proto = ToProto(R"(
+    id: "outer_query"
+    inner_query: {
+      table: {
+        table_name: "thread_slice"
+      }
+      select_columns: {
+        alias: "dur_ms"
+        column_name_or_expression: "dur / 1000"
+      }
+      select_columns: {
+        column_name_or_expression: "name"
+      }
+    }
+    group_by: {
+      column_names: "name"
+      aggregates: {
+        column_name: "dur_ms"
+        op: SUM
+        result_column_name: "total_dur_ms"
+      }
+    }
+  )");
+  auto ret = gen.Generate(proto.data(), proto.size());
+  ASSERT_OK_AND_ASSIGN(std::string res, ret);
+  ASSERT_THAT(res.c_str(), EqualsIgnoringWhitespace(R"(
+    WITH
+      sq_1 AS (
+        SELECT
+          dur / 1000 AS dur_ms,
+          name
+        FROM thread_slice
+      ),
+      sq_outer_query AS (
+        SELECT
+          name,
+          SUM(dur_ms) AS total_dur_ms
+        FROM sq_1
+        GROUP BY name
+      )
+    SELECT * FROM sq_outer_query
+  )"));
 }
 
 }  // namespace perfetto::trace_processor::perfetto_sql::generator

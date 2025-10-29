@@ -93,14 +93,14 @@ export default class implements PerfettoPlugin {
             ),
           ]);
         },
-        tags: {kind: ANDROID_LOGS_TRACK_KIND},
+        tags: {kinds: [ANDROID_LOGS_TRACK_KIND]},
         renderer: createAndroidLogTrack(ctx, uri),
       });
       const track = new TrackNode({
         name: 'Android logs',
         uri,
       });
-      ctx.workspace.addChildInOrder(track);
+      ctx.defaultWorkspace.addChildInOrder(track);
     }
 
     const androidLogsTabUri = 'perfetto.AndroidLog#tab';
@@ -140,7 +140,9 @@ export default class implements PerfettoPlugin {
       name: 'Android logs',
       selectTracks(tracks) {
         return tracks
-          .filter((track) => track.tags?.kind === ANDROID_LOGS_TRACK_KIND)
+          .filter((track) =>
+            track.tags?.kinds?.includes(ANDROID_LOGS_TRACK_KIND),
+          )
           .filter((t) =>
             t.renderer.getDataset?.()?.implements({msg: STR_NULL}),
           );

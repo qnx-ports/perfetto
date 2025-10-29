@@ -21,7 +21,6 @@ import {assertExists} from '../../base/logging';
 import {clamp, floatEqual} from '../../base/math_utils';
 import {cropText} from '../../base/string_utils';
 import {Time, time} from '../../base/time';
-import {exists} from '../../base/utils';
 import {uuidv4Sql} from '../../base/uuid';
 import {featureFlags} from '../../core/feature_flags';
 import {raf} from '../../core/raf_scheduler';
@@ -109,15 +108,6 @@ function filterVisibleSlices<S extends Slice>(
   // The last visible slice is simpler, since the slices are sorted
   // by timestamp you can binary search for the last slice such
   // that slice.start <= end.
-
-  // One specific edge case that will come up often is when:
-  // For all slice in slices: slice.startNsQ > end (e.g. all slices are
-  // to the right).
-  // Since the slices are sorted by startS we can check this easily:
-  const maybeFirstSlice: S | undefined = slices[0];
-  if (exists(maybeFirstSlice) && maybeFirstSlice.startNs > end) {
-    return [];
-  }
 
   return slices.filter((slice) => slice.startNs <= end && slice.endNs >= start);
 }
@@ -430,7 +420,13 @@ export abstract class BaseSliceTrack<
     await this.maybeRequestData(rawSlicesKey);
   }
 
-  render({ctx, size, visibleWindow, timescale}: TrackRenderContext): void {
+  render({
+    ctx,
+    size,
+    visibleWindow,
+    timescale,
+    colors,
+  }: TrackRenderContext): void {
     // TODO(hjd): fonts and colors should come from the CSS and not hardcoded
     // here.
 
@@ -648,9 +644,8 @@ export abstract class BaseSliceTrack<
 
       // Draw a thicker border around the selected slice (or chevron).
       const slice = discoveredSelection;
-      const color = slice.colorScheme;
       const y = padding + slice.depth * (sliceHeight + rowSpacing);
-      ctx.strokeStyle = color.base.setHSL({s: 100, l: 10}).cssString;
+      ctx.strokeStyle = colors.COLOR_TIMELINE_OVERLAY;
       ctx.beginPath();
       const THICKNESS = 3;
       ctx.lineWidth = THICKNESS;

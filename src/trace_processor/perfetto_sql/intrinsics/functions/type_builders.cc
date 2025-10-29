@@ -24,21 +24,21 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "perfetto/base/build_config.h"
 #include "perfetto/base/logging.h"
 #include "perfetto/base/status.h"
 #include "perfetto/ext/base/flat_hash_map.h"
-#include "perfetto/ext/base/small_vector.h"
+#include "perfetto/ext/base/murmur_hash.h"
 #include "perfetto/ext/base/status_macros.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "perfetto/public/compiler.h"
 #include "perfetto/trace_processor/basic_types.h"
-#include "src/trace_processor/containers/interval_intersector.h"
+#include "src/trace_processor/containers/interval_tree.h"
 #include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/array.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/counter.h"
@@ -59,22 +59,23 @@
 namespace perfetto::trace_processor {
 namespace {
 
-inline void HashSqlValue(base::FnvHasher& h, const SqlValue& v) {
+inline void HashSqlValue(base::MurmurHashCombiner& h, const SqlValue& v) {
+  h.Combine(v.type);
   switch (v.type) {
     case SqlValue::Type::kString:
-      h.Update(v.AsString());
+      h.Combine(v.AsString());
       break;
     case SqlValue::Type::kDouble:
-      h.Update(v.AsDouble());
+      h.Combine(v.AsDouble());
       break;
     case SqlValue::Type::kLong:
-      h.Update(v.AsLong());
+      h.Combine(v.AsLong());
       break;
     case SqlValue::Type::kBytes:
       PERFETTO_FATAL("Wrong type");
       break;
     case SqlValue::Type::kNull:
-      h.Update(nullptr);
+      h.Combine(0);
       break;
   }
   return;
@@ -377,7 +378,7 @@ struct IntervalTreeIntervalsAgg
     }
 
     // Create a partition key and save SqlValues of the partition.
-    base::FnvHasher h;
+    base::MurmurHashCombiner h;
     uint32_t j = 0;
     for (uint32_t i = kMinArgCount + 1; i < argc; i += 2) {
       SqlValue new_val = sqlite::utils::SqliteValueToSqlValue(argv[i]);
@@ -460,14 +461,31 @@ struct CounterPerTrackAgg
       // to "reset" the counter to zero when it returns to zero (so we don't
       // keep showing a non-zero value), but don't then need a long stream of
       // zeroes after that.
+      //
+      // For the same reason we also keep track of the final no-change row in a
+      // run and add that, so that delta-based transitions from zero work
+      // correctly too.
       const std::vector<double>& prev_vals = new_rows_track->val;
       auto size = prev_vals.size();
       if (std::equal_to<double>()(prev_vals[size - 1], val) && size > 1 &&
           std::equal_to<double>()(prev_vals[size - 2], val)) {
+        new_rows_track->last_equal_id = id;
+        new_rows_track->last_equal_ts = ts;
+        new_rows_track->last_equal_val = val;
         // TODO(mayzner): In the future we should also support "lagging" - if
         // the next one has the same value as the previous, we should remove the
         // previous.
         return;
+      } else {
+        if (new_rows_track->last_equal_ts != 0) {
+          new_rows_track->id.push_back(new_rows_track->last_equal_id);
+          new_rows_track->ts.push_back(new_rows_track->last_equal_ts);
+          new_rows_track->val.push_back(new_rows_track->last_equal_val);
+        }
+
+        new_rows_track->last_equal_id = 0;
+        new_rows_track->last_equal_ts = 0;
+        new_rows_track->last_equal_val = 0;
       }
     }
 
@@ -536,22 +554,19 @@ struct SymbolizeAgg
 }  // namespace
 
 base::Status RegisterTypeBuilderFunctions(PerfettoSqlEngine& engine) {
-  RETURN_IF_ERROR(engine.RegisterSqliteAggregateFunction<ArrayAgg>(nullptr));
-  RETURN_IF_ERROR(engine.RegisterSqliteFunction<Struct>(nullptr));
+  RETURN_IF_ERROR(engine.RegisterAggregateFunction<ArrayAgg>(nullptr));
+  RETURN_IF_ERROR(engine.RegisterFunction<Struct>(nullptr));
+  RETURN_IF_ERROR(engine.RegisterAggregateFunction<RowDataframeAgg>(nullptr));
   RETURN_IF_ERROR(
-      engine.RegisterSqliteAggregateFunction<RowDataframeAgg>(nullptr));
+      engine.RegisterAggregateFunction<IntervalTreeIntervalsAgg>(nullptr));
   RETURN_IF_ERROR(
-      engine.RegisterSqliteAggregateFunction<IntervalTreeIntervalsAgg>(
-          nullptr));
-  RETURN_IF_ERROR(
-      engine.RegisterSqliteAggregateFunction<CounterPerTrackAgg>(nullptr));
+      engine.RegisterAggregateFunction<CounterPerTrackAgg>(nullptr));
 
 #if PERFETTO_BUILDFLAG(PERFETTO_LLVM_SYMBOLIZER)
-  RETURN_IF_ERROR(
-      engine.RegisterSqliteAggregateFunction<SymbolizeAgg>(nullptr));
+  RETURN_IF_ERROR(engine.RegisterAggregateFunction<SymbolizeAgg>(nullptr));
 #endif
 
-  return engine.RegisterSqliteAggregateFunction<NodeAgg>(nullptr);
+  return engine.RegisterAggregateFunction<NodeAgg>(nullptr);
 }
 
 }  // namespace perfetto::trace_processor

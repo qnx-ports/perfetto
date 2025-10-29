@@ -196,7 +196,7 @@ message PageContext {
 
 // The page content represented as a tree of semantic chunks and (in the
 // future) annotated with additional information about the page.
-// Next ID: 8
+// Next ID: 9
 message AnnotatedPageContent {
   // The version of the proto. Each time a backwards incompatible change is made
   // to the proto, the version should be incremented.
@@ -215,8 +215,8 @@ message AnnotatedPageContent {
   // The interaction information for the page--the subtree represented by the
   // AnnotatedPageContent. This is for top-level interactions, such as the mouse
   // position and focused element, for which there can only be one unique value
-  // for the entire page. Includes interaction information for the main frame
-  // and embedded iframes.
+  // for the entire page.
+  // Currently this is only tracked for the main frame.
   PageInteractionInfo page_interaction_info = 4 [features = { field_presence: EXPLICIT }];
 
   // The rect of the viewport for the tab. i.e., screenshot dimensions.
@@ -226,6 +226,11 @@ message AnnotatedPageContent {
   // The id of the tab that the page content was extracted from. Guaranteed to
   // be unique within the browsing session.
   int32 tab_id = 7 [features = { field_presence: EXPLICIT }];
+
+  // A page can only have one popup window open at a time. If one is open, its
+  // details are populated here. The popup window draws on top of the tab and as
+  // such has a higher z order than the main frame's Document.
+  PopupWindow popup_window = 8 [features = { field_presence: EXPLICIT }];
 }
 
 // The ContentNode tree is a sparse representation of the DOM tree for a web
@@ -254,7 +259,7 @@ message ContentNode {
   ContentAttributes content_attributes = 2 [features = { field_presence: EXPLICIT }];
 }
 
-// Next ID: 28
+// Next ID: 29
 message ContentAttributes {
   oneof content_data {
     // Only set if attribute_type is CONTENT_ATTRIBUTE_TEXT.
@@ -344,6 +349,9 @@ message ContentAttributes {
   // Only populated for ANNOTATED_PAGE_CONTENT_MODE_ACTIONABLE_ELEMENTS.
   AXRole aria_role = 26 [features = { field_presence: EXPLICIT }];
 
+  // Whether the content node is from an ad.
+  bool is_ad_related = 28 [features = { field_presence: EXPLICIT }];
+
   reserved 5, 6, 7, 17, 18, 1, 22;
 }
 
@@ -355,12 +363,22 @@ message ContentAttributes {
 //
 // Only populated for ANNOTATED_PAGE_CONTENT_MODE_ACTIONABLE_ELEMENTS.
 message Geometry {
-  // The bounding box of the content node, in the page coordinate system. This
-  // roughly corresponds to the element's local box used for hit testing.
+  // The bounding box of the content node mapped to the viewport ignoring any
+  // ancestor clips (including the viewport clip). This can be thought of as the
+  // where the element would be relative to the viewport if it "popped out" of
+  // the page and was painted on top of all the content. A few use-case for this
+  // are:
+  //
+  // - If empty, this implies the node is not hit-testable, even once
+  //   scrolled onscreen.
+  // - The rect's origin indicates whether whether it starts above or below the
+  //   viewport. A negative y-coordinate means the node's content starts above
+  //   the viewport.
   BoundingRect outer_bounding_box = 1 [features = { field_presence: EXPLICIT }];
 
-  // Denotes which subset of this node is visible, in the page coordinate
-  // system. If the content is offscreen, this field will be empty.
+  // The bounding box of the content node relative to the viewport including all
+  // ancestor clipping. These are the element bounds visible to the user and
+  // hit-testable in the DOM.
   BoundingRect visible_bounding_box = 2 [features = { field_presence: EXPLICIT }];
 
   // Whether the content node is fixed or sticky position. This may suggest
@@ -572,7 +590,7 @@ message FormInfo {
   string form_name = 1 [features = { field_presence: EXPLICIT }];
 }
 
-// Next ID: 9
+// Next ID: 11
 message FormControlData {
   // The name for the field.
   string field_name = 1 [features = { field_presence: EXPLICIT }];
@@ -598,6 +616,18 @@ message FormControlData {
 
   // Redaction decision for form fields.
   RedactionDecision redaction_decision = 8 [features = { field_presence: EXPLICIT }];
+
+  // The types of data that can be autofilled this field. This does not imply
+  // that the user has data to fill of this type on file.
+  repeated CoarseAutofillFieldType coarse_autofill_field_type = 9;
+
+  // Global identifier (across one AnnotatedPageContent) of an autofillable
+  // section. Fields that belong to the same section are filled in one fill
+  // operation. These fields share the same `autofill_section_id`.
+  // The value may change over time if the page changes (IDs are generated
+  // in AnnotatedPageContent traversal order according to Autofill's
+  // understanding of forms).
+  uint32 autofill_section_id = 10 [features = { field_presence: EXPLICIT }];
 }
 
 // Represents an option in a select field. See below for example.
@@ -638,10 +668,6 @@ message IframeData {
     RedactedFrameMetadata redacted_frame_metadata = 4;
   }
 
-  // Indicates whether the iframe is likely to be an ad frame. This is set for
-  // both the root ad frame and its descendants.
-  bool likely_ad_frame = 2 [features = { field_presence: EXPLICIT }];
-
   message RedactedFrameMetadata {
     Reason reason = 1 [features = { field_presence: EXPLICIT }];
 
@@ -658,7 +684,7 @@ message IframeData {
     }
   }
 
-  reserved 1;
+  reserved 1, 2;
 }
 
 // The data for a frame in the web page. This is the common data structure for
@@ -832,8 +858,9 @@ message TableRowData {
 
 // Represents the interaction information for the page. This is for top-level
 // interactions, such as the mouse position and focused element, for which
-// there can only be one unique value. Includes interaction information for
-// the main frame and embedded iframes.
+// there can only be one unique value.
+// Currently this is only tracked for the main frame. The IDs correspond to the
+// DOM node IDs of the content nodes in the main frame.
 // Next ID: 4
 message PageInteractionInfo {
   // The content node ID of the content node that is currently focused.
@@ -851,6 +878,23 @@ message Point {
   int32 x = 1 [features = { field_presence: EXPLICIT }];
 
   int32 y = 2 [features = { field_presence: EXPLICIT }];
+}
+
+// Represents a popup window that is open on a web page.
+// Next ID: 5
+message PopupWindow {
+  // Root node for the document in the window.
+  ContentNode root_node = 1 [features = { field_presence: EXPLICIT }];
+
+  // Metadata for the document in the window.
+  FrameData frame_data = 2 [features = { field_presence: EXPLICIT }];
+
+  // Unique identifier for the document which opened this popup window.
+  DocumentIdentifier opener_document_id = 3 [features = { field_presence: EXPLICIT }];
+
+  // Unique identifier for the node which opened this popup window. Relies on
+  // opener_document_id to determine which document contains the node.
+  int32 opener_common_ancestor_dom_node_id = 4 [features = { field_presence: EXPLICIT }];
 }
 
 // Uniquely identifies a DOM elements across all frames.
@@ -1936,7 +1980,7 @@ enum ContentAttributeType {
 }
 
 // The reason why a node is clickable.
-// Next ID: 12
+// Next ID: 15
 enum ClickabilityReason {
   // The node is a native form control.
   CLICKABILITY_REASON_CLICKABLE_CONTROL = 0;
@@ -1945,8 +1989,9 @@ enum ClickabilityReason {
   CLICKABILITY_REASON_CLICK_HANDLER = 1;
 
   // The node has mouse event handlers like mouseup, mousedown, mouseover and
-  // mouseenter.
-  CLICKABILITY_REASON_MOUSE_EVENTS = 2;
+  // mouseenter. Deprecated in favor of
+  // CLICKABILITY_REASON_MOUSE_CLICK and CLICKABILITY_REASON_MOUSE_HOVER.
+  CLICKABILITY_REASON_MOUSE_EVENTS = 2 [deprecated = true];
 
   // The node has keyboard event handlers like keydown, keypress, keyup.
   CLICKABILITY_REASON_KEY_EVENTS = 3;
@@ -1980,6 +2025,19 @@ enum ClickabilityReason {
   // The node has autocomplete, as indicated by the same-named attribute or
   // aria-autocomplete.
   CLICKABILITY_REASON_AUTOCOMPLETE = 11;
+
+  // The node has mouse event handlers like mouseup and mousedown.
+  CLICKABILITY_REASON_MOUSE_CLICK = 12;
+
+  // The node has mouse event handlers like mouseover and mouseenter.
+  CLICKABILITY_REASON_MOUSE_HOVER = 13;
+
+  // The node has a CSS :hover pseudo-class, which indicates that it changes
+  // state when a mouse hovers over it. This should be relatively low-priority
+  // compared to stronger clickability signals. There's not enough granularity
+  // in Chrome to know what properties the rule might effect, so this reason
+  // just indicates that a :hover rule is defined.
+  CLICKABILITY_REASON_HOVER_PSEUDO_CLASS = 14;
 }
 
 // Next ID: 5
@@ -2092,6 +2150,15 @@ enum RedactionDecision {
 
   // Is a password input or was in the past.
   REDACTION_DECISION_REDACTED_HAS_BEEN_PASSWORD = 2;
+}
+
+// The type of data that can be autofilled into a form.
+enum CoarseAutofillFieldType {
+  COARSE_AUTOFILL_FIELD_TYPE_UNSUPPORTED = 0;
+
+  COARSE_AUTOFILL_FIELD_TYPE_ADDRESS = 1;
+
+  COARSE_AUTOFILL_FIELD_TYPE_CREDIT_CARD = 2;
 }
 
 // Indicates the type of media in the media data.

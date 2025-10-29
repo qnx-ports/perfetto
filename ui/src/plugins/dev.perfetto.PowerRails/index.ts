@@ -66,7 +66,7 @@ export default class implements PerfettoPlugin {
     });
     ctx.plugins
       .getPlugin(StandardGroupsPlugin)
-      .getOrCreateStandardGroup(ctx.workspace, 'POWER')
+      .getOrCreateStandardGroup(ctx.defaultWorkspace, 'POWER')
       .addChildInOrder(powerRailsGroup);
 
     for (; it.valid(); it.next()) {
@@ -100,7 +100,7 @@ export default class implements PerfettoPlugin {
       ctx.tracks.registerTrack({
         uri,
         tags: {
-          kind: COUNTER_TRACK_KIND,
+          kinds: [COUNTER_TRACK_KIND],
           trackIds: [trackId],
           type: 'power_rails',
         },
