@@ -45,7 +45,11 @@ constexpr bool kUseTCPSocket = false;
 
 // This determines the maximum size allowed for an IPC message. Trying to send
 // or receive a larger message will hit DCHECK(s) and auto-disconnect.
-constexpr size_t kIPCBufferSize = 128 * 1024;
+// WARNING HACK: TODO REVERT
+// Increasing the buffer is a workaround for traced_relay dropping buffers
+// due to message being larger than kIPCBufferSize. This is a shortterm
+// solution but unblocks getting trace files on busier systems.
+constexpr size_t kIPCBufferSize = 1024 * 1024;
 
 constexpr uid_t kInvalidUid = static_cast<uid_t>(-1);
 
