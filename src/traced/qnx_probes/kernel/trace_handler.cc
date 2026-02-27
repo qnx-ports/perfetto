@@ -445,6 +445,13 @@ int TraceHandler::HandleThreadNamed(std::uint32_t header,
     generic_rename->set_tid(GetExtTid(pid, tid));
     generic_rename->set_comm(thread_name);
   }
+
+  // After a rename we need to push another process tree update in case it is an
+  // idle thread. To avoid uneeded updates only do this if it is a kernel thread
+  // (pid=1).
+  if (pid == 1) {
+    WriteProcessTree(pid, tid, timestamp);
+  }
   return 0;
 }
 
@@ -545,12 +552,19 @@ void TraceHandler::WriteProcessTree(std::int32_t pid,
 
   // set thread for process if it exists
   if (tid.has_value()) {
+    const auto& cur_thread = process_info_cache_.GetThread(pid, *tid);
     auto* thread_info = process_tree->add_threads();
     thread_info->set_pid(pid);
     thread_info->set_tid(GetExtTid(pid, *tid));
 
     // In QNX it is considered the main thread if it has tid of 1.
     thread_info->set_is_main_thread(*tid == 1);
+
+    // In QNX it is considered an idle thread in the case its part of the kernel
+    // (pid=1) and has the substring idle in the name. the substring is used in
+    // order to handle both 7.1 and QNX 8.0 in one check
+    thread_info->set_is_idle(pid == 1 && cur_thread.GetName().find("idle") !=
+                                             std::string::npos);
   }
 
   // Set the tree for the parents
@@ -599,10 +613,6 @@ void TraceHandler::WriteThreadStatusUpdate(std::int32_t pid,
       generic_state->set_prio(prio);
     }
 
-    const auto& name = thread.GetName();
-    if (name != kInvalidName) {
-      generic_state->set_comm(name);
-    }
     PERFETTO_DLOG(
         "WriteThreadStatusUpdate cpu=%u pid=%d tid=%d etid=%lu ts=%lu, "
         "state=%s",
