@@ -32,6 +32,10 @@
 
 #include "src/traced/qnx_probes/qnx_probes_producer.h"
 
+extern "C" {
+#include <sys/tracelog.h>
+}
+
 namespace perfetto {
 
 int PERFETTO_EXPORT_ENTRYPOINT QnxProbesMain(int argc, char** argv) {
@@ -41,6 +45,15 @@ int PERFETTO_EXPORT_ENTRYPOINT QnxProbesMain(int argc, char** argv) {
   };
 
   bool background = false;
+
+  if (tracelog_acquire() == EBUSY) {
+    PERFETTO_LOG(
+        "Failed to acquire tracelog. Please shutdown any other kernel "
+        "traceloggers before starting %s.",
+        argv[0]);
+    return -1;
+  }
+  tracelog_release();
 
   static const option long_options[] = {
       {"background", no_argument, nullptr, OPT_BACKGROUND},
