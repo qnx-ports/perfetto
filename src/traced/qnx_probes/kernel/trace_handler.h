@@ -57,6 +57,9 @@ namespace qnx {
  */
 class TraceHandler {
  public:
+  using TaskState =
+      perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum;
+
   TraceHandler(std::shared_ptr<TraceWriter> writer);
   TraceHandler(std::shared_ptr<TraceWriter> writer,
                const KernelTraceConfig& config);
@@ -111,11 +114,6 @@ class TraceHandler {
                        const std::uint32_t* data,
                        std::size_t data_size);
 
-  int HandleThreadDestroy(std::uint32_t header,
-                          std::uint64_t timestamp,
-                          const std::uint32_t* data,
-                          std::size_t data_size);
-
  private:
   ProcessCache process_info_cache_;
   tracelog_instance_t* tracelogger_;
@@ -140,8 +138,6 @@ class TraceHandler {
 
   void WriteThreadStatusUpdate(std::int32_t pid,
                                std::int32_t tid,
-                               std::uint64_t timestamp,
-                               std::uint32_t cpu,
                                std::int32_t prio);
 
   /**
@@ -175,6 +171,14 @@ class TraceHandler {
    * and Perfetto monotonic clock.
    */
   void CalculateCyclesToMonoClockSkew();
+
+  /**
+   * @brief Convert a trace event to an associated Perfetto TaskState.
+   *
+   * @param event event number from trace header.
+   * @return TaskState or TaskState::TASK_STATE_UNKNOWN if no mapping is found.
+   */
+  TaskState TaskStateFromTraceEvent(std::uint32_t event) const;
 };
 
 }  // namespace qnx

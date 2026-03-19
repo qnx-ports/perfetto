@@ -28,13 +28,16 @@ MultiPartEvent::MultiPartEvent()
     : event_(),
       is_terminated_(false),
       num_parts_(0),
-      multi_part_data_(nullptr) {}
+      multi_part_data_(nullptr),
+      timestamp_(0) {}
 
-MultiPartEvent::MultiPartEvent(const traceevent_t* event)
+MultiPartEvent::MultiPartEvent(const traceevent_t* event,
+                               std::uint64_t timestamp)
     : event_(),
       is_terminated_(false),
       num_parts_(0),
-      multi_part_data_(nullptr) {
+      multi_part_data_(nullptr),
+      timestamp_(timestamp) {
   switch (_TRACE_GET_STRUCT(event->header)) {
     case _TRACE_STRUCT_S: {
       event_ = *event;
@@ -62,7 +65,8 @@ MultiPartEvent::MultiPartEvent(const MultiPartEvent& other)
     : event_(other.event_),
       is_terminated_(other.is_terminated_),
       num_parts_(other.num_parts_),
-      multi_part_data_(nullptr) {
+      multi_part_data_(nullptr),
+      timestamp_(other.timestamp_) {
   std::uint32_t bytes_size =
       other.num_parts_ * sizeof(other.multi_part_data_[0]);
   multi_part_data_ = static_cast<std::uint32_t*>(malloc(bytes_size));
@@ -76,7 +80,8 @@ MultiPartEvent::MultiPartEvent(MultiPartEvent&& other)
     : event_(std::move(other.event_)),
       is_terminated_(std::move(other.is_terminated_)),
       num_parts_(std::move(other.num_parts_)),
-      multi_part_data_(std::move(other.multi_part_data_)) {
+      multi_part_data_(std::move(other.multi_part_data_)),
+      timestamp_(other.timestamp_) {
   other.multi_part_data_ = nullptr;
   other.num_parts_ = 0;
   other.is_terminated_ = false;
@@ -152,6 +157,10 @@ std::uint32_t MultiPartEvent::GetTimestampLSB() const {
   return event_.data[0];
 }
 
+std::uint64_t MultiPartEvent::GetTimestamp() const {
+  return timestamp_;
+}
+
 const std::uint32_t* MultiPartEvent::GetData() const {
   if (multi_part_data_ == nullptr && num_parts_ == 0) {
     return &(event_.data[1]);
@@ -171,6 +180,10 @@ bool MultiPartEvent::IsTerminated() const {
 }
 
 bool MultiPartEvent::IsPart(const traceevent_t* part) const {
+  if (is_terminated_) {
+    return false;
+  }
+
   // Check if timestamps match
   if (event_.data[0] != part->data[0]) {
     return false;
@@ -198,15 +211,15 @@ bool MultiPartEvent::IsPart(const traceevent_t* part) const {
     return false;
   }
 
-  if (is_terminated_) {
-    return false;
-  }
-
   return true;
 }
 
 std::uint32_t MultiPartEvent::GetHeader() const {
   return event_.header;
+}
+
+std::uint32_t MultiPartEvent::GetCpu() const {
+  return _NTO_TRACE_GETCPU(event_.header);
 }
 
 }  // namespace qnx

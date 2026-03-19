@@ -20,7 +20,6 @@
 #include <sys/trace.h>
 
 #include <ctime>
-#include <iostream>
 
 namespace perfetto {
 namespace qnx {
@@ -111,25 +110,20 @@ bool CpuContext::IsInitialized() const {
   return cpu_set_.size() == num_cpu_initialized_;
 }
 
-void CpuContext::Update(MultiPartEvent* event) {
+std::uint64_t CpuContext::Update(const traceevent_t* event) {
   if (!event) {
-    return;
+    return 0;
   }
-
-  std::uint32_t header = event->GetHeader();
 
   // Ensure the event is a TIME CONTROL event
-  std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(header);
-  if (event_class != _TRACE_CONTROL_C) {
-    return;
-  }
-  std::uint32_t event_id = _NTO_TRACE_GETEVENT(header);
-  if (event_id != _TRACE_CONTROL_TIME) {
-    return;
+  std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(event->header);
+  std::uint32_t event_id = _NTO_TRACE_GETEVENT(event->header);
+  std::uint32_t event_cpu = _NTO_TRACE_GETCPU(event->header);
+  if ((event_class == _TRACE_CONTROL_C) && (event_id == _TRACE_CONTROL_TIME)) {
+    cpu_set_[event_cpu].timestamp_msb = ((uint64_t)event->data[1]) << 32u;
   }
 
-  cpu_set_[_NTO_TRACE_GETCPU(header)].timestamp_msb =
-      ((uint64_t)event->GetData()[0]) << 32u;
+  return (cpu_set_[event_cpu].timestamp_msb | event->data[0]);
 }
 
 std::uint64_t CpuContext::GetCpuInitialTimestamp(std::size_t cpu_id) const {
@@ -156,17 +150,12 @@ std::uint32_t CpuContext::GetCpuFlags(std::size_t cpu_id) const {
   return cpu_set_[cpu_id].flags;
 }
 
-std::uint64_t CpuContext::CalculateEpochNano(std::uint32_t timestamp_lsb,
-                                             std::size_t cpu_id) const {
+std::uint64_t CpuContext::CalculateEpochNano(
+    std::uint64_t timestamp_cycles) const {
   // Ensure it is initialized
-  if (!IsInitialized() || cpu_id >= GetNumCpus()) {
+  if (!IsInitialized()) {
     return 0;
   }
-
-  // Calculate the timestamp cycles since boot by merging the msb from the CPU
-  // context with the lsb from the event.
-  const CpuInfo& cpu = cpu_set_[cpu_id];
-  std::uint64_t timestamp_cycles = (cpu.timestamp_msb | timestamp_lsb);
 
   // uint64_t will overflow causing incorrect timestamps and cycles_per_sec_
   // isn't large enough to divide by kNanoPerSec So use __int128 to ensure the

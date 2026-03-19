@@ -37,7 +37,7 @@ namespace qnx {
  * when an appropriate page is available for reading.
  *
  * Data can be written to the page cache in arbitrary blocks. Reading from the
- * page cache is limited to data in size of "chuncks". In practice we use
+ * page cache is limited to data in size of "chunks". In practice we use
  * sizeof(traceevent_t) -- 16 bytes as the chunk size so that the pages can be
  * read one tracevent_t at a time. For this reason we align the page sizes to
  * the chunk size so that chunks never span pages.

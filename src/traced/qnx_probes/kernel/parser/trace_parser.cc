@@ -98,12 +98,6 @@ int TraceParser::Register(Callback callback,
                         [event_id + (2 * _TRACE_MAX_KER_CALL_NUM)] = callback;
         break;
       }
-        //    case _NTO_TRACE_INT:
-        //      {event_callbacks_[event_class][event_id] = callback;break;}
-        //    case _NTO_TRACE_INTENTER:
-        //      {event_callbacks_[event_class][event_id] = callback;break;}
-        //    case _NTO_TRACE_INTEXIT:
-        //      {event_callbacks_[event_class][event_id] = callback;break;}
       case _NTO_TRACE_PROCESS: {
         event_callbacks_[_TRACE_PR_TH_C >> 10]
                         [(GetRightmostBitIndex(event_id) + 1) << 6] = callback;
@@ -112,16 +106,22 @@ int TraceParser::Register(Callback callback,
       // Process and thread events are mapped based on the most significant bit
       // in the event id (GetRightmostBitIndex)
       case _NTO_TRACE_THREAD: {
-        event_callbacks_[_TRACE_PR_TH_C >> 10][GetRightmostBitIndex(event_id)] =
-            callback;
+#if (__QNX__ < 800)
+        auto event_idx = GetRightmostBitIndex(event_id);
+#else
+        auto event_idx = event_id;
+#endif
+        event_callbacks_[_TRACE_PR_TH_C >> 10][event_idx] = callback;
         break;
       }
+#if (__QNX__ < 800)
       case _NTO_TRACE_VTHREAD: {
         event_callbacks_[_TRACE_PR_TH_C >> 10][GetRightmostBitIndex(event_id) +
                                                _TRACE_MAX_TH_STATE_NUM] =
             callback;
         break;
       }
+#endif
       case _NTO_TRACE_USER: {
         event_callbacks_[_TRACE_USER_C >> 10][event_id] = callback;
         break;
@@ -134,10 +134,6 @@ int TraceParser::Register(Callback callback,
         event_callbacks_[_TRACE_COMM_C >> 10][event_id] = callback;
         break;
       }
-        //    case _NTO_TRACE_INT_HANDLER_ENTER:
-        //      {event_callbacks_[event_class][event_id] = callback;break;}
-        //    case _NTO_TRACE_INT_HANDLER_EXIT:
-        //      {event_callbacks_[event_class][event_id] = callback;break;}
       case _NTO_TRACE_QUIP: {
         event_callbacks_[_TRACE_QUIP_C >> 10][event_id] = callback;
         break;
@@ -224,11 +220,18 @@ int TraceParser::Register(Callback callback,
       break;
     }
     case _NTO_TRACE_THREAD: {
-      InsertCallbackForRange(callback, _TRACE_PR_TH_C >> 10,
-                             GetRightmostBitIndex(event_id_start),
-                             GetRightmostBitIndex(event_id_end));
+#if (__QNX__ < 800)
+      auto event_start_idx = GetRightmostBitIndex(event_id_start);
+      auto event_end_idx = GetRightmostBitIndex(event_id_end);
+#else
+      auto event_start_idx = event_id_start;
+      auto event_end_idx = event_id_end;
+#endif
+      InsertCallbackForRange(callback, _TRACE_PR_TH_C >> 10, event_start_idx,
+                             event_end_idx);
       break;
     }
+#if (__QNX__ < 800)
     case _NTO_TRACE_VTHREAD: {
       InsertCallbackForRange(
           callback, _TRACE_PR_TH_C >> 10,
@@ -236,6 +239,7 @@ int TraceParser::Register(Callback callback,
           GetRightmostBitIndex(event_id_end) + _TRACE_MAX_TH_STATE_NUM);
       break;
     }
+#endif
     case _NTO_TRACE_USER: {
       InsertCallbackForRange(callback, _TRACE_USER_C >> 10, event_id_start,
                              event_id_end);
@@ -251,10 +255,6 @@ int TraceParser::Register(Callback callback,
                              event_id_end);
       break;
     }
-      //    case _NTO_TRACE_INT_HANDLER_ENTER:
-      //      {event_callbacks_[event_class][event_id] = callback;break;}
-      //    case _NTO_TRACE_INT_HANDLER_EXIT:
-      //      {event_callbacks_[event_class][event_id] = callback;break;}
     case _NTO_TRACE_QUIP: {
       InsertCallbackForRange(callback, _TRACE_QUIP_C >> 10, event_id_start,
                              event_id_end);

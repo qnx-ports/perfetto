@@ -35,7 +35,7 @@ namespace qnx {
  * beginning of the buffer so that the full block of memory is available.
  *
  * The buffer supports compaction such that it will be truncated/shrunk to a
- * block of memory that fits just the avaialble data (or null if emtpy).
+ * block of memory that fits just the available data (or null if emtpy).
  *
  * The buffer is allocated lazily as more data is required. It is resized in
  * increments based on the specified initial size.

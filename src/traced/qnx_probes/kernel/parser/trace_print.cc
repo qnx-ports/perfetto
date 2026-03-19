@@ -34,6 +34,7 @@ const char* PR_TH_C_EVENT_NAMES[] = {"Unknown",
                                      "_TRACE_PR_TH_DESTROY_P_NAME",
                                      "_TRACE_PR_TH_NAME_T"};
 
+#if (__QNX__ < 800)
 const char* THREAD_STATE_NAMES[] = {
     "STATE_DEAD",        /* 0	0x00 */
     "STATE_RUNNING",     /* 1	0x01 */
@@ -66,6 +67,39 @@ const char* THREAD_STATE_NAMES[] = {
 
     //_TRACE_MAX_TH_STATE_NUM
 };
+#else
+const char* THREAD_STATE_NAMES[] = {
+    "STATE_DEAD",         /* 0	0x00 */
+    "STATE_RUNNING",      /* 1	0x01 */
+    "STATE_READY",        /* 2	0x02 */
+    "STATE_STOPPED",      /* 3	0x03 */
+    "STATE_SEND",         /* 4	0x04 */
+    "STATE_RECEIVE",      /* 5	0x05 */
+    "STATE_REPLY",        /* 6	0x06 */
+    "EMPTY",              /* 7	0x07 */
+    "EMPTY",              /* 8	0x08 */
+    "STATE_WAITPAGE",     /* 9	0x09 */
+    "STATE_SIGSUSPEND",   /* 10	0x0a */
+    "STATE_SIGWAITINFO",  /* 11	0x0b */
+    "STATE_NANOSLEEP",    /* 12	0x0c */
+    "STATE_MUTEX",        /* 13	0x0d */
+    "STATE_CONDVAR",      /* 14	0x0e */
+    "STATE_JOIN",         /* 15	0x0f */
+    "STATE_INTR",         /* 16	0x10 */
+    "STATE_SEM",          /* 17	0x11 */
+    "STATE_WAITCTX",      /* 18	0x12 */
+    "STATE_RWLOCK_READ",  /* 19	0x13 */
+    "STATE_RWLOCK_WRITE", /* 20	0x14 */
+    "STATE_BARRIER",      /* 21	0x15 */
+    "EMPTY",              /* 22 */
+    "EMPTY",              /* 23 */
+
+    "_TRACE_THREAD_CREATE", /*24*/
+    "_TRACE_THREAD_DESTROY" /*25*/
+
+    //_TRACE_MAX_TH_STATE_NUM
+};
+#endif
 
 const char* CONTROL_EVENT_NAMES[] = {"Unknown", "_TRACE_CONTROL_TIME",
                                      "_TRACE_CONTROL_BUFFER"};

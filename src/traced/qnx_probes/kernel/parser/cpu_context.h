@@ -25,14 +25,12 @@
 namespace perfetto {
 namespace qnx {
 
-// TODO in the update function check that we handle global flag
-
 /**
  * CpuContext holds a vector of CpuInfo that track the initial time and time
  * most significant bits for each cpu on the system. Each tracevent_t includes
  * the cpu id of the cpu it was captured from and the least significant bits of
  * the timestamp (clock cycles) when it was captured. In order to get the time
- * an event occured we need to reconstitute the timestamp (clock cycles) by
+ * an event occurred we need to reconstitute the timestamp (clock cycles) by
  * merging the most significant bits for the corresponding cpu.
  *
  * NOTE: The number of cpus on the system and the cycles per second are taken
@@ -56,9 +54,9 @@ namespace qnx {
  *
  * The most significant bits of a CpuInfo are updated periodically if they roll
  * over. This happens when a new _TRACE_CONTROL_TIME event is provided. This is
- * handled as part of the event dispatch to ensure that the update gets process
- * BEFORE any subsequent events get dispatched because they will need the
- * updated CpuInfo msb in order for their time to be properly reconstituted.
+ * handled BEFORE events are inserted into the assembly_queue_ (TraceEventQueue)
+ * since the queue holds the event in order by timestamp. Prior to insertion the
+ * CPU context is updated and the reconsituted timestamp is generated. 
  */
 class CpuInfo {
  public:
@@ -85,13 +83,21 @@ class CpuContext {
   std::size_t GetNumCpus() const;
   std::size_t Initialize(std::size_t data_size, void* data);
   bool IsInitialized() const;
-  void Update(MultiPartEvent* event);
   std::uint64_t GetCpuInitialTimestamp(std::size_t cpu_id) const;
   std::uint64_t GetCpuTimestampMsb(std::size_t cpu_id) const;
   std::uint32_t GetCpuFlags(std::size_t cpu_id) const;
 
-  std::uint64_t CalculateEpochNano(std::uint32_t timestamp_lsb,
-                                   std::size_t cpu_id) const;
+  /**
+   * @brief Updates the cpu context if needed and returns the MSB for a given
+   * event.
+   *
+   * @param event Event to update the CPU context with.
+   *
+   * @return The timestamp the event took place on, or 0 on invalid event.
+   */
+  std::uint64_t Update(const traceevent_t* event);
+
+  std::uint64_t CalculateEpochNano(std::uint64_t timestamp_cycles) const;
 
  private:
   // Bitmask for inspecting wether the cpu msb is set.

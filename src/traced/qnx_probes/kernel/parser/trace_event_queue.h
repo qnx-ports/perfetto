@@ -19,23 +19,25 @@
 
 #include <sys/trace.h>
 
-#include <array>
 #include <cstddef>
+#include <map>
 #include <memory>
+#include <vector>
 
+#include "src/traced/qnx_probes/kernel/parser/cpu_context.h"
 #include "src/traced/qnx_probes/kernel/parser/multi_part_event.h"
 
 namespace perfetto {
 namespace qnx {
 
 /**
- * A fixed size used to assemble multi-part events. When traceevent_t are
- * inserted into the queue they are inspected to see if they are the start of a
- * new multi-part event or a part of an existing event. If they are part of an
- * existing event the queue is searched linearly for the matching event.
+ * A dynamic size queue used to assemble multi-part events. When traceevent_t
+ * are inserted into the queue they are inspected to see if they are the start
+ * of a new multi-part event or a part of an existing event. If they are part of
+ * an existing event the queue is searched linearly for the matching event.
  *
- * The queue should naturally be in order by timestamp as that is how we receive
- * events from tracelog.
+ * The queue must be sorted to ensure that events are processed in the correct
+ * order.
  *
  * When events are released they are released from the head of the queue (FIFO)
  */
@@ -49,32 +51,25 @@ class TraceEventQueue {
   TraceEventQueue& operator=(const TraceEventQueue&) = delete;
   TraceEventQueue& operator=(TraceEventQueue&&) = delete;
 
-  int InsertEvent(const traceevent_t* event);
-  MultiPartEvent* GetEventAt(std::size_t index);
+  int Init(const std::unique_ptr<CpuContext>& cpu_ctx);
+  int InsertEvent(const traceevent_t* event, std::uint64_t timestamp);
+  const MultiPartEvent* Front() const;
   int ReleaseEvent();
   size_t GetNumEvents() const;
-  inline bool Full() const { return num_queued_events_ == kQueueDepth; }
+
+  /**
+   * @brief Checks if the first event can be safely emitted.
+   *
+   * @return Returns true if the first event can be dispatched safely
+   */
+  bool CanDispatch() const;
 
  private:
-  // 1024 sizing based on comment from original traceparser.c which describes
-  // the empirical analysis of kev files in which 16 depth was max required so
-  // 1024 was agreed to be safety.
-  static constexpr size_t kQueueDepth = 1024;
-  static constexpr size_t kBufferSize = kQueueDepth * sizeof(MultiPartEvent);
-
-  static inline size_t Next(size_t pos);
-  static inline size_t Prev(size_t pos);
-  static inline size_t Delta(size_t from, size_t to);
-
-  MultiPartEvent* Slot(size_t pos) {
-    return reinterpret_cast<MultiPartEvent*>(
-        &event_buffer_[pos * sizeof(MultiPartEvent)]);
-  }
-
-  std::array<std::byte, kBufferSize> event_buffer_{};
-  size_t head_;
-  size_t tail_;
-  size_t num_queued_events_;
+  // multimap is needed as multiple events can have the same ts
+  std::multimap<std::uint64_t, MultiPartEvent> event_buffer_{};
+  std::vector<std::uint64_t> cpus_latest_events_{};
+  std::uint64_t oldest_latest_event_ =
+      0;  // TODO We need a better name for this :)
 };
 
 }  // namespace qnx

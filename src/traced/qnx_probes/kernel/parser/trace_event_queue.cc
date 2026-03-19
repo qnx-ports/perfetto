@@ -15,21 +15,28 @@
  */
 
 #include "src/traced/qnx_probes/kernel/parser/trace_event_queue.h"
+#include <algorithm>
+#include <iostream>
+#include <limits>
 
 namespace perfetto {
 namespace qnx {
 
-TraceEventQueue::TraceEventQueue()
-    : event_buffer_(), head_(0), tail_(0), num_queued_events_(0) {}
+TraceEventQueue::TraceEventQueue() = default;
+TraceEventQueue::~TraceEventQueue() = default;
 
-TraceEventQueue::~TraceEventQueue() {
-  while (head_ != tail_) {
-    std::destroy_at(Slot(head_));
-    head_ = Next(head_);
+int TraceEventQueue::Init(const std::unique_ptr<CpuContext>& cpu_ctx) {
+  cpus_latest_events_.resize(cpu_ctx->GetNumCpus());
+  for (size_t i = 0; i < cpu_ctx->GetNumCpus(); i++) {
+    cpus_latest_events_[i] = cpu_ctx->GetCpuInitialTimestamp(i);
   }
+  oldest_latest_event_ =
+      *std::min_element(cpus_latest_events_.begin(), cpus_latest_events_.end());
+  return 0;
 }
 
-int TraceEventQueue::InsertEvent(const traceevent_t* event) {
+int TraceEventQueue::InsertEvent(const traceevent_t* event,
+                                 std::uint64_t event_ts) {
   if (!event) {
     return -1;
   }
@@ -39,16 +46,35 @@ int TraceEventQueue::InsertEvent(const traceevent_t* event) {
     // in the queue.
     case _TRACE_STRUCT_S:
     case _TRACE_STRUCT_CB: {
-      // Check if the queue is full
-      if (num_queued_events_ == kQueueDepth) {
-        return 1;
+      /**
+       * Update the latest ts for the cpu which the event came on.
+       *
+       * We make a few assumptions for this.
+       * 1. CPU timestamps for that CPU are monotonically increasing.
+       * 2. The latest timestamp only needs to be updated if our current cpu ts
+       *    is the same as the oldest. As all other timestamps in
+       *    cpu_latest_event must be greater than the current oldest.
+       */
+      auto event_cpu = _NTO_TRACE_GETCPU(event->header);
+      bool update_latest =
+          (oldest_latest_event_ == cpus_latest_events_[event_cpu]);
+      if (cpus_latest_events_[event_cpu] > event_ts) {
+        std::cout << "Timestamp regress on cpu: " << event_cpu
+                  << " from: " << cpus_latest_events_[event_cpu]
+                  << " to: " << event_ts << std::endl;
+      }
+      cpus_latest_events_[event_cpu] = event_ts;
+      if (update_latest) {
+        oldest_latest_event_ = *std::min_element(cpus_latest_events_.begin(),
+                                                 cpus_latest_events_.end());
       }
 
-      size_t insert_index = tail_;
-
-      new (Slot(insert_index)) MultiPartEvent(event);
-      num_queued_events_++;
-      tail_ = Next(insert_index);
+      /**
+       * We need to find the events position in the assembly queue by timestamp.
+       * Multimap should take care this for us.
+       */
+      event_buffer_.emplace(event_ts,
+                            std::move(MultiPartEvent(event, event_ts)));
       break;
     }
 
@@ -56,16 +82,14 @@ int TraceEventQueue::InsertEvent(const traceevent_t* event) {
     // instead append it to matching queue element.
     case _TRACE_STRUCT_CC:
     case _TRACE_STRUCT_CE: {
-      // Iterate over the list and find matching entry to append the part to.
-      for (size_t i = head_; i != tail_; i = Next(i)) {
-        // MultiPartEvent::Append performs match check so call it on each entry
-        // and check the result.
-        int result = Slot(i)->Append(event);
-        if (result == 0) {
-          return 0;  // Event was appended so return success.
-        }
-        if (result < 0) {
-          return -1;  // Append failed (likely no mem) fail.
+      // Find all elements with the same timestamp to limit the search of events
+      // which need to be checked.
+      auto events = event_buffer_.equal_range(event_ts);
+      for (auto itr = events.first; itr != events.second; ++itr) {
+        int result = itr->second.Append(event);
+        if (result <= 0) {
+          return result;  // Event was appended so return success. or an error
+                          // occurred.
         }
         // Append did not succeed due to mismatch so keep searching.
       }
@@ -78,38 +102,38 @@ int TraceEventQueue::InsertEvent(const traceevent_t* event) {
   return 0;
 }
 
-MultiPartEvent* TraceEventQueue::GetEventAt(std::size_t index) {
-  if (index >= num_queued_events_) {
-    return nullptr;
-  }
-  size_t abs_index = (head_ + index) % kQueueDepth;
-  return Slot(abs_index);
-}
-
 int TraceEventQueue::ReleaseEvent() {
-  if (num_queued_events_ == 0) {
+  if (event_buffer_.empty()) {
     return -1;
   }
-  std::destroy_at(Slot(head_));
-  head_ = Next(head_);
-  num_queued_events_--;
+  event_buffer_.erase(event_buffer_.cbegin());
   return 0;
 }
 
+const MultiPartEvent* TraceEventQueue::Front() const {
+  if (event_buffer_.empty()) {
+    return nullptr;
+  }
+  return &(event_buffer_.cbegin()->second);
+}
+
 size_t TraceEventQueue::GetNumEvents() const {
-  return num_queued_events_;
+  return event_buffer_.size();
 }
 
-inline size_t TraceEventQueue::Next(size_t pos) {
-  return (pos + 1) % kQueueDepth;
-}
-
-inline size_t TraceEventQueue::Prev(size_t pos) {
-  return (pos == 0 ? kQueueDepth - 1 : pos - 1);
-}
-
-inline size_t TraceEventQueue::Delta(size_t from, size_t to) {
-  return (from <= to) ? (to - from) : (to + kQueueDepth - from);
+/**
+ * For QNX7.1 and earlier events will come in order so we can safely dispatch
+ * any terminated/complete multi-part events at the beginning of the queue.
+ *
+ * QNX8.0+ only maintains order on a per cpu basis so we need to verify that
+ * every CPU has emitted an event earlier then the beginning of the queue.
+ *
+ * To simply the logic we just default to the 8.0 case as it will work for both.
+ */
+bool TraceEventQueue::CanDispatch() const {
+  auto* event = Front();
+  return (event != nullptr && event->IsTerminated() &&
+          event->GetTimestamp() < oldest_latest_event_);
 }
 
 }  // namespace qnx

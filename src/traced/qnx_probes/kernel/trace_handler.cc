@@ -26,7 +26,6 @@ extern "C" {
 }
 
 #include <cinttypes>
-#include <iostream>
 #include <numeric>
 #include <sstream>
 
@@ -34,9 +33,6 @@ extern "C" {
 #include "protos/perfetto/trace/trace_packet.pbzero.h"
 
 #include "src/traced/qnx_probes/kernel/parser/trace_print.h"
-
-using TaskState =
-    perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum;
 
 namespace perfetto {
 namespace qnx {
@@ -110,8 +106,23 @@ TraceHandler::TraceHandler(std::shared_ptr<TraceWriter> writer,
   auto thd_update_cb = std::bind(&TraceHandler::HandleThreadStatusUpdated, this,
                                  std::placeholders::_1, std::placeholders::_2,
                                  std::placeholders::_3, std::placeholders::_4);
+#if (__QNX__ < 800)
+  auto nto_trace_end_event = _NTO_TRACE_THNET_REPLY;
+#else
+  auto nto_trace_end_event = STATE_BARRIER;
+
+  /**
+   * QNX8.0+ also has special trace states that are also emmitted which aren't
+   * true thread states but specific to the trace handler. These are greater
+   * than _NTO_TRACE_THCREATE and _NTO_TRACE_THDESTROY so we need a extra
+   * register for them.
+   */
+  parser_.Register(thd_update_cb, _NTO_TRACE_THREAD, _NTO_TRACE_THMUON_MUTEX,
+                   _NTO_TRACE_THTIMER_DELEGATE);
+#endif
+
   parser_.Register(thd_update_cb, _NTO_TRACE_THREAD, _NTO_TRACE_THRUNNING,
-                   _NTO_TRACE_THNET_REPLY);
+                   nto_trace_end_event);
 
   auto thd_name_cb = std::bind(&TraceHandler::HandleThreadNamed, this,
                                std::placeholders::_1, std::placeholders::_2,
@@ -122,11 +133,6 @@ TraceHandler::TraceHandler(std::shared_ptr<TraceWriter> writer,
                                std::placeholders::_1, std::placeholders::_2,
                                std::placeholders::_3, std::placeholders::_4);
   parser_.Register(thd_dead_cb, _NTO_TRACE_THREAD, _NTO_TRACE_THDEAD);
-
-  auto thd_dtor_cb = std::bind(&TraceHandler::HandleThreadDestroy, this,
-                               std::placeholders::_1, std::placeholders::_2,
-                               std::placeholders::_3, std::placeholders::_4);
-  parser_.Register(thd_dtor_cb, _NTO_TRACE_THREAD, _NTO_TRACE_THDESTROY);
 
   // On Start callback
   auto sys_page_cb = std::bind(&TraceHandler::HandleSysPageFinished, this,
@@ -178,12 +184,15 @@ TraceHandler::TraceHandler(std::shared_ptr<TraceWriter> writer,
     TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_KERCALL);
     TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_THREAD);
     TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_THREAD);
-    TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_VTHREAD);
-    TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_VTHREAD);
     TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_COMM);
     TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_COMM);
     TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_PROCESS);
     TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_PROCESS);
+#if (__QNX__ < 800)
+    // _NTO_TRACE_VTHREAD was removed in QNX8.0
+    TraceEvent(_NTO_TRACE_CLRCLASSPID, _NTO_TRACE_VTHREAD);
+    TraceEvent(_NTO_TRACE_CLRCLASSTID, _NTO_TRACE_VTHREAD);
+#endif
 
     // Configure event filters. We only add the bareminimum event classes to
     // reduce spam of unwanted events.
@@ -291,33 +300,22 @@ int TraceHandler::HandleSysPageFinished(std::uint32_t header,
   return 0;
 }
 
-int TraceHandler::HandleThreadStatusUpdated(std::uint32_t header,
-                                            std::uint64_t timestamp,
-                                            const std::uint32_t* data,
-                                            std::size_t data_size) {
-  if (data_size < 2) {
-    return -1;
-  }
-
-  auto ev = _NTO_TRACE_GETEVENT(header);
-  auto cpu = _NTO_TRACE_GETCPU(header);
-  std::int32_t pid = data[0];
-  std::int32_t tid = data[1];
-  std::int32_t prio = (data_size >= 3) ? static_cast<int32_t>(data[2]) : -1;
-
-  // map the event state to one of the TaskState enums
-  using TState = TaskState;
-  TState state;
-  switch (ev) {
+/**
+ * QNX7.1 and 8.0 have very different states for threads so handle them
+ * separately in hopes it will make the code easier to read
+ */
+#if (__QNX__ < 800)
+TraceHandler::TaskState TraceHandler::TaskStateFromTraceEvent(
+    std::uint32_t event) const {
+  switch (event) {
+    case STATE_DEAD:
+      return TaskState::TASK_STATE_DEAD;
     case STATE_RUNNING:
-      state = TState::TASK_STATE_RUNNING;
-      break;
+      return TaskState::TASK_STATE_RUNNING;
     case STATE_READY:
-      state = TState::TASK_STATE_RUNNABLE;
-      break;
+      return TaskState::TASK_STATE_RUNNABLE;
     case STATE_STOPPED:
-      state = TState::TASK_STATE_STOPPED;
-      break;
+      return TaskState::TASK_STATE_STOPPED;
     case STATE_SEND:
     case STATE_RECEIVE:
     case STATE_REPLY:
@@ -334,21 +332,86 @@ int TraceHandler::HandleThreadStatusUpdated(std::uint32_t header,
     case STATE_WAITCTX:
     case STATE_NET_SEND:
     case STATE_NET_REPLY:
-      state = TState::TASK_STATE_INTERRUPTIBLE_SLEEP;
-      break;
+      return TaskState::TASK_STATE_INTERRUPTIBLE_SLEEP;
     case STATE_WAITPAGE:
-      state = TState::TASK_STATE_UNINTERRUPTIBLE_SLEEP;
-      break;
+      return TaskState::TASK_STATE_UNINTERRUPTIBLE_SLEEP;
     default:
-      return 0;
+      return TaskState::TASK_STATE_UNKNOWN;
+  }
+}
+#else
+TraceHandler::TaskState TraceHandler::TaskStateFromTraceEvent(
+    std::uint32_t event) const {
+  switch (event) {
+    case STATE_CREATE:
+      return TaskState::TASK_STATE_CREATED;
+    case STATE_DEAD:
+      return TaskState::TASK_STATE_DEAD;
+    case STATE_RUNNING:
+      return TaskState::TASK_STATE_RUNNING;
+    case STATE_READY:
+      return TaskState::TASK_STATE_RUNNABLE;
+    case STATE_STOPPED:
+      return TaskState::TASK_STATE_STOPPED;
+    case STATE_SEND:
+    case STATE_RECEIVE:
+    case STATE_REPLY:
+    case STATE_MQ_SEND:
+    case STATE_MQ_RECEIVE:
+    case STATE_SIGSUSPEND:
+    case STATE_SIGWAITINFO:
+    case STATE_NANOSLEEP:
+    case STATE_MUTEX:
+    case STATE_CONDVAR:
+    case STATE_JOIN:
+    case STATE_INTR:
+    case STATE_SEM:
+    case STATE_WAITCTX:
+    case STATE_RWLOCK_READ:
+    case STATE_RWLOCK_WRITE:
+    case STATE_BARRIER:
+    case STATE_PIPE:
+    case STATE_MUON_MUTEX:
+    case STATE_TRACEBUFFER:
+    case STATE_INTR_ATTACH_EV:
+    case STATE_TIMER_DELEGATE:
+      return TaskState::TASK_STATE_INTERRUPTIBLE_SLEEP;
+    case STATE_WAITPAGE:
+      return TaskState::TASK_STATE_UNINTERRUPTIBLE_SLEEP;
+    default:
+      PERFETTO_LOG("Unknown State %d", event);
+      return TaskState::TASK_STATE_UNKNOWN;
+  }
+}
+#endif
+
+int TraceHandler::HandleThreadStatusUpdated(std::uint32_t header,
+                                            std::uint64_t timestamp,
+                                            const std::uint32_t* data,
+                                            std::size_t data_size) {
+  if (data_size < 2) {
+    return -1;
   }
 
-  if (process_info_cache_.CacheThread(pid, tid, state)) {
+  auto ev = _NTO_TRACE_GETEVENT(header);
+  auto cpu = _NTO_TRACE_GETCPU(header);
+  std::int32_t pid = data[0];
+  std::int32_t tid = data[1];
+  std::int32_t prio = (data_size >= 3) ? static_cast<int32_t>(data[2]) : -1;
+
+  // map the event state to one of the TaskState enums
+  using TaskState = TaskState;
+  TaskState state = TaskStateFromTraceEvent(ev);
+  if (state == TaskState::TASK_STATE_UNKNOWN) {
+    return 0;  // Unknown state ignore
+  }
+
+  if (process_info_cache_.CacheThread(pid, tid, timestamp, cpu, state)) {
     PERFETTO_DLOG(
         "Thread Updated cpu=%d pid=%d tid=%d ts=%lu, state=%s", cpu, pid, tid,
         timestamp,
         protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum_Name(state));
-    WriteThreadStatusUpdate(pid, tid, timestamp, cpu, prio);
+    WriteThreadStatusUpdate(pid, tid, prio);
   }
   return 0;
 }
@@ -386,13 +449,26 @@ int TraceHandler::HandleThreadCreated(std::uint32_t header,
   std::int32_t prio =
       (data_size >= 3) ? static_cast<std::int32_t>(data[2]) : -1;
 
+  // If a thread already exists with this tid send a destroy command with its
+  // last ts + 1
+  auto& old_thd = process_info_cache_.GetThread(pid, tid);
+  if (old_thd.GetState() == TaskState::TASK_STATE_DEAD) {
+    process_info_cache_.CacheThread(pid, tid, old_thd.GetUpdateTime() + 1,
+                                    old_thd.GetCpuId(),
+                                    TaskState::TASK_STATE_DEAD);
+    WriteThreadStatusUpdate(pid, tid, -1);
+
+    // uncache the event.
+    process_info_cache_.UncacheThread(pid, tid);
+  }
+
   // Verify that the thread didn't already exist. This can happen if the
   // priority got updated. if that happens just ignore it.
-  if (process_info_cache_.CacheThread(pid, tid,
+  if (process_info_cache_.CacheThread(pid, tid, timestamp, cpu,
                                       TaskState::TASK_STATE_CREATED)) {
     PERFETTO_DLOG("Thread Created   cpu=%d pid=%d tid=%d prio=%d ts=%lu", cpu,
                   pid, tid, prio, timestamp);
-    WriteThreadStatusUpdate(pid, tid, timestamp, cpu, prio);
+    WriteThreadStatusUpdate(pid, tid, prio);
     WriteProcessTree(pid, tid, timestamp);
   }
   return 0;
@@ -435,8 +511,9 @@ int TraceHandler::HandleThreadNamed(std::uint32_t header,
 
   PERFETTO_DLOG("Thread Named pid=%d tid=%d name=%s", pid, tid,
                 thread_name.c_str());
-  process_info_cache_.CacheThread(pid, tid, TaskState::TASK_STATE_UNKNOWN,
-                                  thread_name);
+  process_info_cache_.CacheThread(pid, tid, timestamp,
+                                  perfetto::qnx::kInvalidCpuId,
+                                  TaskState::TASK_STATE_UNKNOWN, thread_name);
   {
     std::lock_guard<std::mutex> lk(writer_mutex_);
     auto packet = writer_->NewTracePacket();
@@ -444,34 +521,6 @@ int TraceHandler::HandleThreadNamed(std::uint32_t header,
     auto generic_rename = packet->set_generic_kernel_task_rename_event();
     generic_rename->set_tid(GetExtTid(pid, tid));
     generic_rename->set_comm(thread_name);
-  }
-  return 0;
-}
-
-int TraceHandler::HandleThreadDestroy(std::uint32_t header,
-                                      std::uint64_t timestamp,
-                                      const std::uint32_t* data,
-                                      std::size_t data_size) {
-  if (data_size < 2) {
-    return -1;
-  }
-
-  auto cpu = _NTO_TRACE_GETCPU(header);
-  std::int32_t pid = data[0];
-  std::int32_t tid = data[1];
-  std::int32_t prio =
-      (data_size >= 3) ? static_cast<std::int32_t>(data[2]) : -1;
-
-  // tid=1 is a special case and destroy is handled in process destroy.
-  if (tid == 1) {
-    return 0;
-  }
-
-  if (process_info_cache_.CacheThread(pid, tid,
-                                      TaskState::TASK_STATE_DESTROYED)) {
-    PERFETTO_DLOG("Thread Destroyed cpu=%d pid=%d tid=%d prio=%d ts=%lu", cpu,
-                  pid, tid, prio, timestamp);
-    WriteThreadStatusUpdate(pid, tid, timestamp, cpu, prio);
   }
   return 0;
 }
@@ -495,18 +544,24 @@ int TraceHandler::HandleThreadDead(std::uint32_t header,
   // dead state
   if (tid == 1) {
     if (process_info_cache_.CacheThread(
-            pid, tid, TaskState::TASK_STATE_INTERRUPTIBLE_SLEEP)) {
+            pid, tid, timestamp, cpu,
+            TaskState::TASK_STATE_INTERRUPTIBLE_SLEEP)) {
       PERFETTO_DLOG("Thread Dead cpu=%d pid=%d tid=%d prio=%d ts=%lu", cpu, pid,
                     tid, prio, timestamp);
-      WriteThreadStatusUpdate(pid, tid, timestamp, cpu, prio);
+      WriteThreadStatusUpdate(pid, tid, prio);
     }
     return 0;
   }
 
-  if (process_info_cache_.CacheThread(pid, tid, TaskState::TASK_STATE_DEAD)) {
+  if (process_info_cache_.CacheThread(pid, tid, timestamp, cpu,
+                                      TaskState::TASK_STATE_DEAD)) {
     PERFETTO_DLOG("Thread Dead cpu=%d pid=%d tid=%d prio=%d ts=%lu", cpu, pid,
                   tid, prio, timestamp);
-    WriteThreadStatusUpdate(pid, tid, timestamp, cpu, prio);
+    WriteThreadStatusUpdate(pid, tid, prio);
+    if (process_info_cache_.GetThread(pid, tid).GetState() ==
+        TaskState::TASK_STATE_DESTROYED) {
+      process_info_cache_.UncacheThread(pid, tid);
+    }
   }
   return 0;
 }
@@ -515,22 +570,33 @@ int TraceHandler::HandleProcessDestroy(std::uint32_t header,
                                        std::uint64_t timestamp,
                                        const std::uint32_t* data,
                                        std::size_t data_size) {
+  (void)timestamp;
+  (void)header;
+
   if (data_size < 1) {
     return -1;
   }
-  auto cpu = _NTO_TRACE_GETCPU(header);
   std::int32_t pid = data[1];
 
-  // QNX 7.1 has a quirk where thread shutdown doesn't correctly appear so
-  // inject destroy and dead event
-  for (auto state :
-       {TaskState::TASK_STATE_DEAD, TaskState::TASK_STATE_DESTROYED}) {
-    process_info_cache_.CacheThread(pid, 1, state);
-    WriteThreadStatusUpdate(pid, 1, timestamp, cpu, -1);
-    // We can't emit the events at the same time so increment by a ns to mimic a
-    // dead destroy
-    timestamp++;
+  // QNX has a quirk where the main thread shutdown doesn't correctly appear so
+  // inject dead event.
+  auto cpu = _NTO_TRACE_GETCPU(header);
+  process_info_cache_.CacheThread(pid, 1, timestamp, cpu,
+                                  TaskState::TASK_STATE_DEAD);
+  WriteThreadStatusUpdate(pid, 1, -1);
+
+  // For all threads that still existing (including the main thread) send a dead
+  // event. This will either mark them as a zombie or if they are already dead
+  // will mark them as destroyed. This doesn't worry about uncacheing threads as
+  // the process will be uncached cleaning them up as well.
+  const auto& process = process_info_cache_.GetProcess(pid);
+  for (auto& [tid, old_thd] : process.GetThreads()) {
+    process_info_cache_.CacheThread(pid, tid, old_thd.GetUpdateTime() + 1,
+                                    old_thd.GetCpuId(),
+                                    TaskState::TASK_STATE_DEAD);
+    WriteThreadStatusUpdate(pid, tid, -1);
   }
+
   process_info_cache_.UncacheProcess(pid);
   return 0;
 }
@@ -577,24 +643,29 @@ void TraceHandler::WriteProcessTree(std::int32_t pid,
 
 void TraceHandler::WriteThreadStatusUpdate(std::int32_t pid,
                                            std::int32_t tid,
-                                           std::uint64_t timestamp,
-                                           std::uint32_t cpu,
                                            std::int32_t prio) {
   auto thread = process_info_cache_.GetThread(pid, tid);
   if (thread.GetId() == kInvalidId) {
-    PERFETTO_DLOG("Failed too find cached thread with pid=%d tid=%d", pid, tid);
+    PERFETTO_LOG("Failed too find cached thread with pid=%d tid=%d", pid, tid);
+    return;
+  }
+  /**
+   * Perfetto only cares threads doing work so ignore any updates about idle
+   * threads
+   */
+  if (pid == 1 && thread.GetName().find("idle") != std::string::npos) {
     return;
   }
 
   {
     std::lock_guard<std::mutex> lk(writer_mutex_);
     auto packet = writer_->NewTracePacket();
-    SetPacketTimestamp(packet, timestamp);
+    SetPacketTimestamp(packet, thread.GetUpdateTime());
 
     auto generic_state = packet->set_generic_kernel_task_state_event();
     generic_state->set_state(thread.GetState());
     generic_state->set_tid(GetExtTid(pid, tid));
-    generic_state->set_cpu(cpu);
+    generic_state->set_cpu(thread.GetCpuId());
     if (prio != -1) {
       generic_state->set_prio(prio);
     }
@@ -606,7 +677,8 @@ void TraceHandler::WriteThreadStatusUpdate(std::int32_t pid,
     PERFETTO_DLOG(
         "WriteThreadStatusUpdate cpu=%u pid=%d tid=%d etid=%lu ts=%lu, "
         "state=%s",
-        cpu, pid, tid, GetExtTid(pid, tid), timestamp,
+        thread.GetCpuId(), pid, tid, GetExtTid(pid, tid),
+        thread.GetUpdateTime(),
         protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum_Name(
             thread.GetState()));
   }
