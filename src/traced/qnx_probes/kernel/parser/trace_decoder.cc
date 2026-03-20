@@ -21,7 +21,6 @@
 
 #include <charconv>
 #include <cstdint>
-#include <iostream>
 
 #include "perfetto/base/logging.h"
 
@@ -36,7 +35,6 @@
 namespace perfetto {
 namespace qnx {
 
-// TODO consider merging TraceParser and Decoder
 // TODO consider adding kNumChunksPerPage equivalent to the config - if someone
 //      configures a different kernel buffer size then this will likely need to
 //      change as well
@@ -61,7 +59,7 @@ TraceDecoder::TraceDecoder(EventCallback event_callback,
 TraceDecoder::~TraceDecoder() = default;
 
 /**
- * Decodes the event data in one of three ways.
+ * Decodes the event data in one of two ways.
  *   1) Directly from the data passed in (DecodeCpuContext and DecodeEvents)
  *   2) From the buffer DecodeHeader, DecodeSyspage, DecodeCpuContext
  * NOTE: DecodeCpuContext can work either from the raw data or the buffer
@@ -286,7 +284,7 @@ int TraceDecoder::DecodeSyspage(void* data, std::size_t data_size) {
  *
  * @param data The pointer to the data to decode.
  * @param data_size The number of bytes of data available to decode.
- * @returns 0 if successful, EMORE if more data requried, -1 on error.
+ * @returns 0 if successful, EMORE if more data required, -1 on error.
  */
 int TraceDecoder::DecodeCpuContext(void* data, std::size_t data_size) {
   if (state_ != State::CpuContext || !cpu_ctx_) {
@@ -322,6 +320,9 @@ int TraceDecoder::DecodeCpuContext(void* data, std::size_t data_size) {
 
   // If the context is already initialized then transition to State::Events.
   if (cpu_ctx_->IsInitialized()) {
+    // The assembly queue needs to know how many cpus there are for dispatching.
+    assembly_queue_.Init(cpu_ctx_);
+
     state_ = State::Events;
     page_cache_processor_thread_ =
         std::thread(&TraceDecoder::ProcessPageCache, this);
@@ -338,7 +339,7 @@ int TraceDecoder::DecodeCpuContext(void* data, std::size_t data_size) {
  *
  * @param data The pointer to the data to decode.
  * @param data_size The number of bytes available to decode.
- * @returns 0 if successful, EMORE if more data requried, -1 on error.
+ * @returns 0 if successful, EMORE if more data required, -1 on error.
  */
 int TraceDecoder::DecodeEvents(void* data, std::size_t data_size) {
   if (state_ != State::Events && state_ != State::CpuContext) {
@@ -362,31 +363,29 @@ int TraceDecoder::DecodeEvents(void* data, std::size_t data_size) {
  * terminated/complete events from the front of the queue.
  *
  * NOTE: This is performed by the PageCacheProcessor thread.
+ * NOTE: This handles update of the CPU context BEFORE inserting the event so 
+ *       that any _TRACE_CONTROL_TIME events are handled in order BEFORE
+ *       regenerating event times and so that we can regenerate the event time 
+ *       from the msb+lsb. This is required by the TraceEventQueue since it
+ *       stores events in order by time.
  *
  * @param trace_event The pointer to the traceevent_t to decode.
- * @returns 0 if successful, EMORE if more data requried, -1 on error.
+ * @returns 0 if successful, EMORE if more data required, -1 on error.
  */
 int TraceDecoder::DecodeEvent(traceevent_t* trace_event) {
   num_events_decoded_++;
 
-  // Attempt to insert the event into the assembly queue but dispatch an event
-  // if the queue is too full to take a new event.
-  int rc = assembly_queue_.InsertEvent(trace_event);
-  if (rc == 1) {
-    DispatchEvent();
-    rc = assembly_queue_.InsertEvent(trace_event);
+  // Update the CPU context based on this event if needed.
+  if (trace_event != nullptr) {
+    auto event_ts = cpu_ctx_->Update(trace_event);
+    int rc = assembly_queue_.InsertEvent(trace_event, event_ts);
+    if (rc != 0) {
+      return rc;
+    }
   }
 
-  if (rc != 0) {
-    return rc;
-  }
-
-  // Dispatch any terminated/complete multi-part events at the beginning of the
-  // assembly queue.
-  auto* event = assembly_queue_.GetEventAt(0);
-  while (event != nullptr && event->IsTerminated()) {
+  while (assembly_queue_.CanDispatch()) {
     DispatchEvent();
-    event = assembly_queue_.GetEventAt(0);
   }
 
   return 0;
@@ -407,7 +406,7 @@ int TraceDecoder::DecodeEvent(traceevent_t* trace_event) {
  *
  * @param header_start The pointer to the start of the header data.
  * @param header_end The pointer to the end of the headers data.
- * @returns 0 if successful, EMORE if more data requried, -1 on error.
+ * @returns 0 if successful, EMORE if more data required, -1 on error.
  */
 int TraceDecoder::ParseHeaderAttributes(char* header_start, char* header_end) {
   if (!header_start || !header_end) {
@@ -536,7 +535,7 @@ int TraceDecoder::ParseHeaderAttributes(char* header_start, char* header_end) {
  * @param b1len The number of bytes in the b1 string.
  * @param b2 The pointer to the non-null terminated string to locate in b1.
  * @param b2len The number of bytes in the b2 string.
- * @returns A pointer to the first occurence of b2 in b1 or NULL if no match is
+ * @returns A pointer to the first occurrence of b2 in b1 or NULL if no match is
  *          found.
  */
 void* TraceDecoder::memfind(const void* b1,
@@ -570,37 +569,27 @@ void* TraceDecoder::memfind(const void* b1,
  * PageCache::GetChunk() has read all the available data.
  */
 void TraceDecoder::ProcessPageCache() {
-  // Loop is exited when GetChunk returns nullptr.
+  // Loop is exited when GetChunk returns nullptr. But processing null once to
+  // know when the data should be flushed.
   while (1) {
     traceevent_t* event =
         reinterpret_cast<traceevent_t*>(page_cache_.GetChunk());
+    DecodeEvent(event);
     if (event == nullptr) {
       return;
     }
-    DecodeEvent(event);
     page_cache_.ReleaseChunk();
   }
 }
 
 /**
- * Dispatches an event from the assembly queue. The dispatch first updates the
- * CPU context (if necessary), calculates the absolute time of the event, and
- * then invokes the TraceDecoder::Callback method.
- *
- * @returns 0 on success or -1 on failture to release the event.
+ * Dispatches an event from the assembly queue. Calculates the absolute time of
+ * the event, and then invokes the TraceDecoder::Callback method.
  */
 void TraceDecoder::DispatchEvent() {
-  auto* process_event = assembly_queue_.GetEventAt(0);
-
-  // Update the CPU context based on this event if needed.
-  cpu_ctx_->Update(process_event);
-
-  // Dispatch this event
+  auto* process_event = assembly_queue_.Front();
   if (event_callback_) {
-    auto cpu_id = _NTO_TRACE_GETCPU(process_event->GetHeader());
-    auto ts =
-        cpu_ctx_->CalculateEpochNano(process_event->GetTimestampLSB(), cpu_id);
-
+    auto ts = cpu_ctx_->CalculateEpochNano(process_event->GetTimestamp());
     event_callback_(process_event->GetHeader(), ts,
                     (unsigned*)process_event->GetData(),
                     process_event->GetDataSize());

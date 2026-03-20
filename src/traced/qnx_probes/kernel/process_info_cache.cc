@@ -22,16 +22,19 @@ namespace perfetto {
 namespace qnx {
 
 const ThreadInfo ThreadInfo::kInvalid{
-    kInvalidId, ThreadStateEnum::TASK_STATE_UNKNOWN, kInvalidName};
+    kInvalidId, kInvalidUpdateTime, kInvalidCpuId,
+    ThreadStateEnum::TASK_STATE_UNKNOWN, kInvalidName};
 
 ThreadInfo::ThreadInfo(std::int32_t tid,
+                       std::uint64_t update_ts,
+                       std::int32_t cpu_id,
                        ThreadStateEnum state,
                        const std::string& name)
-    : tid_(tid), state_(state), name_(name) {}
-
-std::int32_t ThreadInfo::GetId() const {
-  return tid_;
-}
+    : tid_(tid),
+      update_ts_(update_ts),
+      cpu_id_(cpu_id),
+      state_(state),
+      name_(name) {}
 
 void ThreadInfo::SetState(ThreadStateEnum state) {
   if (state != ThreadStateEnum::TASK_STATE_UNKNOWN) {
@@ -39,23 +42,10 @@ void ThreadInfo::SetState(ThreadStateEnum state) {
   }
 }
 
-ThreadStateEnum ThreadInfo::GetState() const {
-  return state_;
-}
-
 void ThreadInfo::SetName(const std::string& name) {
   if (name != kInvalidName) {
     name_ = name;
   }
-}
-
-bool ThreadInfo::IsDead() const {
-  return (state_ == ThreadStateEnum::TASK_STATE_DEAD ||
-          state_ == ThreadStateEnum::TASK_STATE_DESTROYED);
-}
-
-std::string ThreadInfo::GetName() const {
-  return name_;
 }
 
 void ThreadInfo::Dump() const {
@@ -102,18 +92,10 @@ ProcessInfo::ProcessInfo(std::int32_t pid,
                          const std::string& name)
     : pid_(pid), parent_pid_(parent_pid), name_(name) {}
 
-std::int32_t ProcessInfo::GetId() const {
-  return pid_;
-}
-
 void ProcessInfo::SetParentId(std::int32_t parent_pid) {
   if (parent_pid != kInvalidId) {
     parent_pid_ = parent_pid;
   }
-}
-
-std::int32_t ProcessInfo::GetParentId() const {
-  return parent_pid_;
 }
 
 void ProcessInfo::SetName(const std::string& name) {
@@ -122,8 +104,11 @@ void ProcessInfo::SetName(const std::string& name) {
   }
 }
 
-std::string ProcessInfo::GetName() const {
-  return name_;
+void ProcessInfo::RemoveThread(std::int32_t tid) {
+  auto iter = threads_.find(tid);
+  if (iter != threads_.end()) {
+    threads_.erase(iter);
+  }
 }
 
 bool ProcessInfo::UpdateThread(const ThreadInfo& thread_info) {
@@ -131,40 +116,84 @@ bool ProcessInfo::UpdateThread(const ThreadInfo& thread_info) {
     return false;
   }
 
+  // Check if we are creating a thread of if no thread exists.
   auto iter = threads_.find(thread_info.GetId());
-  if (iter == threads_.end()) {
-    // New Thread. Always update
-    threads_.insert_or_assign(thread_info.GetId(), thread_info);
-    return true;
+  if (thread_info.GetState() == ThreadStateEnum::TASK_STATE_CREATED) {
+    if (iter == threads_.end()) {
+      threads_.insert_or_assign(thread_info.GetId(), thread_info);
+      return true;
+    } else {
+      return false;  // duplicate create call
+    }
   }
 
+  if (iter == threads_.end()) {
+    // No thread to associate the event with
+    return false;
+  }
+
+  /**
+   * QNX 7.1 and QNX8.0 have 2 different behaviours when a process is being
+   * terminated
+   *
+   * When a process is terminated on QNX 7.1 multiple THDESTROY and THDEAD event
+   * can be emitted. This means we only want to accept the first one.
+   *
+   * THREADY
+   * THRUNNING
+   * THDESTROY
+   * THDEAD
+   * THSTACK
+   * THREADY
+   * THRUNNING
+   * THDESTROY
+   * THDEAD
+   * THDESTROY
+   *
+   * When a process is terminated on QNX8.0 we still see multiple THDEAD but
+   * only a single destroy following a similar patter with the last 3 events
+   * only occurring If the thread wasn't waiting to be joined on exit.
+   *
+   * THREADY
+   * THRUNNING
+   * THDESTROY
+   * THDEAD
+   * THREADY
+   * THRUNNING
+   * THDEAD
+   *
+   * The common usage between them is
+   *
+   * DESTROY  // Ignore as comes as the same time as dead.
+   * DEAD
+   * ...
+   * DEAD (only shows up in QNX8.0 If thread wasn't waiting to be joined)
+   * 
+   * Here we look for two THDEAD events -- the second indicates the thread is 
+   * destroyed. We ignore (don't publish states between the first THDEAD and the
+   * second).
+   */
   bool update_required = false;
   auto& cur_thread = iter->second;
   const auto old_state = cur_thread.GetState();
-  const auto new_state = thread_info.GetState();
-  if (cur_thread.IsDead()) {
-    // QNX reuses tids so check if a dead thread is being recreated.
-    update_required |= (new_state == ThreadStateEnum::TASK_STATE_CREATED &&
-                        old_state == ThreadStateEnum::TASK_STATE_DESTROYED);
-
-    // Thread Joined/destroyed.
-    update_required |= (old_state == ThreadStateEnum::TASK_STATE_DEAD &&
-                        new_state == ThreadStateEnum::TASK_STATE_DESTROYED);
-  } else if (thread_info.IsDead()) {
-    // Only transition into a dead state if it was previously alive
-    // (ignore destroy events)
-    update_required = (new_state == ThreadStateEnum::TASK_STATE_DEAD);
+  auto new_state = thread_info.GetState();
+  if (old_state == ThreadStateEnum::TASK_STATE_DEAD) {
+    // Second time we got thread dead which means it was joined so send the
+    // destroy state.
+    if (new_state == ThreadStateEnum::TASK_STATE_DEAD) {
+      update_required = true;
+      new_state = ThreadStateEnum::TASK_STATE_DESTROYED;
+    }
   } else {
-    // If both threads are alive update as long as the state changed and the new
-    // state isn't created.
-    update_required = (new_state != old_state &&
-                       new_state != ThreadStateEnum::TASK_STATE_CREATED);
+    // If both threads are alive update as long as the state changed
+    update_required = (new_state != old_state);
   }
 
-  // Update the thread
   if (update_required) {
+    cur_thread.SetUpdateTime(thread_info.GetUpdateTime());
+    cur_thread.SetCpuId(thread_info.GetCpuId());
     cur_thread.SetName(thread_info.GetName());
-    cur_thread.SetState(thread_info.GetState());
+    cur_thread.SetState(new_state);
   }
   return update_required;
 }
@@ -209,7 +238,7 @@ bool ProcessCache::CacheProcess(std::int32_t pid,
   return true;
 }
 
-const ProcessInfo& ProcessCache::GetProcess(std::int32_t pid) const {
+const ProcessInfo& ProcessCache::GetProcess(std::int32_t pid) {
   auto iter = process_map_.find(pid);
   if (iter != process_map_.end()) {
     return iter->second;
@@ -219,6 +248,8 @@ const ProcessInfo& ProcessCache::GetProcess(std::int32_t pid) const {
 
 bool ProcessCache::CacheThread(std::int32_t pid,
                                std::int32_t tid,
+                               std::uint64_t update_ts,
+                               std::int32_t cpu_id,
                                ThreadStateEnum state,
                                const std::string& name) {
   if (pid == kInvalidId || tid == kInvalidId) {
@@ -231,8 +262,16 @@ bool ProcessCache::CacheThread(std::int32_t pid,
     process_map_.emplace(pid, ProcessInfo(pid));
     iter = process_map_.find(pid);
   }
-  ThreadInfo threadInfo(tid, state, name);
-  return iter->second.UpdateThread(threadInfo);
+  ThreadInfo thread_info(tid, update_ts, cpu_id, state, name);
+  return iter->second.UpdateThread(thread_info);
+}
+
+void ProcessCache::UncacheThread(std::int32_t pid, std::int32_t tid) {
+  auto iter = process_map_.find(pid);
+  if (iter == process_map_.end()) {
+    return;
+  }
+  iter->second.RemoveThread(tid);
 }
 
 const ThreadInfo& ProcessCache::GetThread(std::int32_t pid,

@@ -31,6 +31,8 @@ namespace qnx {
 
 constexpr std::int32_t kInvalidId = -1;
 const std::string kInvalidName = "";
+constexpr std::uint64_t kInvalidUpdateTime = 0;
+constexpr std::int32_t kInvalidCpuId = -1;
 
 /**
  * Caches process and thread info such that we have a complete record of the
@@ -44,42 +46,55 @@ class ThreadInfo {
   ThreadInfo() = delete;
   explicit ThreadInfo(
       std::int32_t tid = kInvalidId,
+      std::uint64_t update_ts = kInvalidUpdateTime,
+      std::int32_t cpu_id = kInvalidCpuId,
       ThreadStateEnum state = ThreadStateEnum::TASK_STATE_UNKNOWN,
       const std::string& name = kInvalidName);
 
-  std::int32_t GetId() const;
+  std::int32_t GetId() const { return tid_; }
   void SetState(ThreadStateEnum state);
-  ThreadStateEnum GetState() const;
+  ThreadStateEnum GetState() const { return state_; }
   void SetName(const std::string& name);
-  std::string GetName() const;
-  bool IsDead() const;
+  const std::string& GetName() const { return name_; }
+  void SetUpdateTime(std::uint64_t time) { update_ts_ = time; }
+  std::uint64_t GetUpdateTime() const { return update_ts_; }
+  void SetCpuId(std::int32_t cpu_id) { cpu_id_ = cpu_id; }
+  std::uint32_t GetCpuId() const { return cpu_id_; }
+
   void Dump() const;
 
   static const ThreadInfo kInvalid;
 
  private:
   std::int32_t tid_;
+  std::uint64_t update_ts_;  // ts of last update
+  std::int32_t cpu_id_;      // cpu of last event
   ThreadStateEnum state_;
   std::string name_;
 };
 
 class ProcessInfo {
  public:
+  using ThreadMap = std::unordered_map<std::int32_t, ThreadInfo>;
+
+ public:
   explicit ProcessInfo(std::int32_t pid = kInvalidId,
                        std::int32_t parent_pid = kInvalidId,
                        const std::string& name = kInvalidName);
 
-  std::int32_t GetId() const;
+  std::int32_t GetId() const { return pid_; }
   void SetParentId(std::int32_t parent_pid);
-  std::int32_t GetParentId() const;
+  std::int32_t GetParentId() const { return parent_pid_; }
   void SetName(const std::string& name);
-  std::string GetName() const;
+  const std::string& GetName() const { return name_; }
+  const ThreadMap& GetThreads() const { return threads_; }
 
-  /// Updates thread information returning true if the process tree requires an
-  /// update.
-  bool UpdateThread(const ThreadInfo& thread_info);
+  // Updates thread information returning true if the process tree requires an
+  // update.
   const ThreadInfo& GetThread(std::int32_t tid) const;
-  const std::unordered_map<std::int32_t, ThreadInfo>& GetThreads();
+  bool UpdateThread(const ThreadInfo& thread_info);
+  void RemoveThread(std::int32_t tid);
+  
   void Dump() const;
 
   static const ProcessInfo kInvalid;
@@ -88,7 +103,7 @@ class ProcessInfo {
   std::int32_t pid_;
   std::int32_t parent_pid_;
   std::string name_;
-  std::unordered_map<std::int32_t, ThreadInfo> threads_;
+  ThreadMap threads_;
 };
 
 class ProcessCache {
@@ -100,21 +115,24 @@ class ProcessCache {
   ProcessCache& operator=(const ProcessCache&) = delete;
   ProcessCache& operator=(ProcessCache&&) = delete;
 
-  /// Caches information about a process and returns true if the process tree
-  /// requires an update.
+  // Caches information about a process and returns true if the process tree
+  // requires an update.
   bool CacheProcess(std::int32_t pid,
                     std::int32_t parent_pid = kInvalidId,
                     const std::string& name = kInvalidName);
-  const ProcessInfo& GetProcess(std::int32_t) const;
+  const ProcessInfo& GetProcess(std::int32_t);
 
-  /// Caches information about a thread and returns true if the process tree
-  /// requires an update.
+  // Caches information about a thread and returns true if the process tree
+  // requires an update.
   bool CacheThread(std::int32_t pid,
                    std::int32_t tid,
+                   std::uint64_t update_ts,
+                   std::int32_t cpu_id,
                    ThreadStateEnum state = ThreadStateEnum::TASK_STATE_UNKNOWN,
                    const std::string& name = kInvalidName);
   const ThreadInfo& GetThread(std::int32_t pid, std::int32_t tid) const;
 
+  void UncacheThread(std::int32_t pid, std::int32_t tid);
   void UncacheProcess(std::int32_t pid);
   void Dump() const;
 

@@ -96,7 +96,8 @@ QnxProbesProducer::CreateDSInstance<qnx::KernelDataSource>(
   auto buffer_id = static_cast<BufferID>(config.target_buffer());
   return std::unique_ptr<qnx::KernelDataSource>(new qnx::KernelDataSource(
       session_id,
-      endpoint_->CreateTraceWriter(buffer_id, BufferExhaustedPolicy::kStall),
+      endpoint_->CreateTraceWriter(buffer_id,
+                                   BufferExhaustedPolicy::kStallThenDrop),
       config));
 }
 

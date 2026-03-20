@@ -46,7 +46,7 @@ class MultiPartEvent {
   MultiPartEvent();
   MultiPartEvent(const MultiPartEvent& other);
   MultiPartEvent(MultiPartEvent&& other);
-  MultiPartEvent(const traceevent_t* event);
+  MultiPartEvent(const traceevent_t* event, std::uint64_t timestamp);
   ~MultiPartEvent();
 
   MultiPartEvent& operator=(const MultiPartEvent& rhs);
@@ -55,17 +55,20 @@ class MultiPartEvent {
   int Append(const traceevent_t* part);
 
   std::uint32_t GetTimestampLSB() const;
+  std::uint64_t GetTimestamp() const;
   const std::uint32_t* GetData() const;
   std::size_t GetDataSize() const;
   bool IsTerminated() const;
   bool IsPart(const traceevent_t* event) const;
   std::uint32_t GetHeader() const;
+  std::uint32_t GetCpu() const;
 
  private:
   traceevent_t event_;
   bool is_terminated_;
   std::uint32_t num_parts_;
   std::uint32_t* multi_part_data_;
+  std::uint64_t timestamp_;
 
   // In a multi part event, each event is considered a part, each part has two
   // data elements, each data element is a uint32_t -> 4 bytes
