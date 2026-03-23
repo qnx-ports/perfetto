@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <string>
 
 namespace perfetto {
@@ -49,12 +50,16 @@ MultiPartEvent::MultiPartEvent(const traceevent_t* event,
     case _TRACE_STRUCT_CB: {
       event_ = *event;
       is_terminated_ = false;
-      num_parts_ = 1;
+      num_parts_ = 0;
       multi_part_data_ =
           static_cast<std::uint32_t*>(malloc(kPartsPerStep * kBytesPerPart));
       if (multi_part_data_) {
         multi_part_data_[0] = event->data[1];
         multi_part_data_[1] = event->data[2];
+        num_parts_ = 1;
+      } else {
+        std::cout << "Warning: unable to alloc multi_part_data segment in ctor" 
+                  << std::endl;
       }
       break;
     }
@@ -69,11 +74,20 @@ MultiPartEvent::MultiPartEvent(const MultiPartEvent& other)
       timestamp_(other.timestamp_) {
   std::uint32_t bytes_size =
       other.num_parts_ * sizeof(other.multi_part_data_[0]);
-  multi_part_data_ = static_cast<std::uint32_t*>(malloc(bytes_size));
-  if (multi_part_data_ == nullptr) {
-    // throw
+
+  if (bytes_size > 0 && other.multi_part_data_ != nullptr) {
+    multi_part_data_ = static_cast<std::uint32_t*>(malloc(bytes_size));
+    if (multi_part_data_ == nullptr) {
+      num_parts_ = 0;
+      std::cout << "Warning: unable to alloc multi_part_data in copy ctor" 
+                << std::endl;
+    } else {
+      memcpy(multi_part_data_, other.multi_part_data_, bytes_size);
+    }
+  } else {
+    num_parts_ = 0;
+    multi_part_data_ = nullptr;
   }
-  memcpy(multi_part_data_, other.multi_part_data_, bytes_size);
 }
 
 MultiPartEvent::MultiPartEvent(MultiPartEvent&& other)
@@ -98,24 +112,54 @@ MultiPartEvent& MultiPartEvent::operator=(const MultiPartEvent& rhs) {
     return *this;
   }
 
+  if (multi_part_data_ != nullptr) {
+    free(multi_part_data_);
+    multi_part_data_ = nullptr;
+  }
+
   event_ = rhs.event_;
   is_terminated_ = rhs.is_terminated_;
   num_parts_ = rhs.num_parts_;
+  timestamp_ = rhs.timestamp_;
+
   std::uint32_t bytes_size = rhs.num_parts_ * sizeof(rhs.multi_part_data_[0]);
-  multi_part_data_ = static_cast<std::uint32_t*>(malloc(bytes_size));
-  if (multi_part_data_ == nullptr) {
-    // throw
+
+  if (bytes_size > 0 && rhs.multi_part_data_ != nullptr) {
+    multi_part_data_ = static_cast<std::uint32_t*>(malloc(bytes_size));
+    if (multi_part_data_ == nullptr) {
+      num_parts_ = 0;
+      std::cout << "Warning: unable alloc multi_part_data in copy op" << std::endl;
+    } else {
+      memcpy(multi_part_data_, rhs.multi_part_data_, bytes_size);
+    }
+  } else {
+    num_parts_ = 0;
+    multi_part_data_ = nullptr;
   }
-  memcpy(multi_part_data_, rhs.multi_part_data_, bytes_size);
 
   return *this;
 }
 
 MultiPartEvent& MultiPartEvent::operator=(MultiPartEvent&& rhs) {
+  if (this == &rhs) {
+    return *this;
+  }
+
+  if (multi_part_data_ != nullptr) {
+    free(multi_part_data_);
+    multi_part_data_ = nullptr;
+  }
+
   event_ = std::move(rhs.event_);
   is_terminated_ = std::move(rhs.is_terminated_);
   num_parts_ = std::move(rhs.num_parts_);
   multi_part_data_ = std::move(rhs.multi_part_data_);
+  timestamp_ = rhs.timestamp_;
+
+  rhs.multi_part_data_ = nullptr;
+  rhs.num_parts_ = 0;
+  rhs.is_terminated_ = false;
+
   return *this;
 }
 
