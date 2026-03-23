@@ -27,7 +27,7 @@ const ThreadInfo ThreadInfo::kInvalid{
 
 ThreadInfo::ThreadInfo(std::int32_t tid,
                        std::uint64_t update_ts,
-                       std::int32_t cpu_id,
+                       std::uint32_t cpu_id,
                        ThreadStateEnum state,
                        const std::string& name)
     : tid_(tid),
@@ -249,7 +249,7 @@ const ProcessInfo& ProcessCache::GetProcess(std::int32_t pid) {
 bool ProcessCache::CacheThread(std::int32_t pid,
                                std::int32_t tid,
                                std::uint64_t update_ts,
-                               std::int32_t cpu_id,
+                               std::uint32_t cpu_id,
                                ThreadStateEnum state,
                                const std::string& name) {
   if (pid == kInvalidId || tid == kInvalidId) {

@@ -56,10 +56,17 @@ int TraceEventQueue::InsertEvent(const traceevent_t* event,
        *    cpu_latest_event must be greater than the current oldest.
        */
       auto event_cpu = _NTO_TRACE_GETCPU(event->header);
+      if (event_cpu >= cpus_latest_events_.size()) {
+        std::cout << "Warning: ignoring event found for unknown cpu " 
+                 << event_cpu 
+                 << std::endl;
+        break;
+      } 
+
       bool update_latest =
           (oldest_latest_event_ == cpus_latest_events_[event_cpu]);
       if (cpus_latest_events_[event_cpu] > event_ts) {
-        std::cout << "Timestamp regress on cpu: " << event_cpu
+        std::cout << "Warning: timestamp regress on cpu: " << event_cpu
                   << " from: " << cpus_latest_events_[event_cpu]
                   << " to: " << event_ts << std::endl;
       }
@@ -93,6 +100,8 @@ int TraceEventQueue::InsertEvent(const traceevent_t* event,
         }
         // Append did not succeed due to mismatch so keep searching.
       }
+      std::cout << "Warning: ignoring event part - no matching event found" 
+                << std::endl;
       break;
     }
     default: {
