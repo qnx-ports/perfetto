@@ -32,7 +32,7 @@ namespace qnx {
 constexpr std::int32_t kInvalidId = -1;
 const std::string kInvalidName = "";
 constexpr std::uint64_t kInvalidUpdateTime = 0;
-constexpr std::int32_t kInvalidCpuId = -1;
+constexpr std::uint32_t kInvalidCpuId = std::numeric_limits<std::uint32_t>::max();
 
 /**
  * Caches process and thread info such that we have a complete record of the
@@ -47,7 +47,7 @@ class ThreadInfo {
   explicit ThreadInfo(
       std::int32_t tid = kInvalidId,
       std::uint64_t update_ts = kInvalidUpdateTime,
-      std::int32_t cpu_id = kInvalidCpuId,
+      std::uint32_t cpu_id = kInvalidCpuId,
       ThreadStateEnum state = ThreadStateEnum::TASK_STATE_UNKNOWN,
       const std::string& name = kInvalidName);
 
@@ -58,7 +58,7 @@ class ThreadInfo {
   const std::string& GetName() const { return name_; }
   void SetUpdateTime(std::uint64_t time) { update_ts_ = time; }
   std::uint64_t GetUpdateTime() const { return update_ts_; }
-  void SetCpuId(std::int32_t cpu_id) { cpu_id_ = cpu_id; }
+  void SetCpuId(std::uint32_t cpu_id) { cpu_id_ = cpu_id; }
   std::uint32_t GetCpuId() const { return cpu_id_; }
 
   void Dump() const;
@@ -68,7 +68,7 @@ class ThreadInfo {
  private:
   std::int32_t tid_;
   std::uint64_t update_ts_;  // ts of last update
-  std::int32_t cpu_id_;      // cpu of last event
+  std::uint32_t cpu_id_;      // cpu of last event
   ThreadStateEnum state_;
   std::string name_;
 };
@@ -127,7 +127,7 @@ class ProcessCache {
   bool CacheThread(std::int32_t pid,
                    std::int32_t tid,
                    std::uint64_t update_ts,
-                   std::int32_t cpu_id,
+                   std::uint32_t cpu_id,
                    ThreadStateEnum state = ThreadStateEnum::TASK_STATE_UNKNOWN,
                    const std::string& name = kInvalidName);
   const ThreadInfo& GetThread(std::int32_t pid, std::int32_t tid) const;

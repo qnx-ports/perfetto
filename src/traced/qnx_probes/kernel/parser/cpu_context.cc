@@ -38,6 +38,16 @@ std::size_t CpuContext::GetNumCpus() const {
   return cpu_set_.size();
 }
 
+// Initializing the CPU context involves two key elements. First we use the 
+// first event we receive for each given CPU in order to set the 
+// initial_timestamp value. Then we use the first _TRACE_CONTROL_TIME event in 
+// order to set the timestamp_msb. We need both for each CPU context to be 
+// initialized. That means the data argument needs enough events to have both an
+// initial event AND a _TRACE_CONTROL_TIME event for each CPU. 
+// In addition, if use_global_clk is set (usually is) then we can initialize all
+// the CPU contexts using the first event and _TRACE_CONTROL_TIME event.
+// Lastly note that the trace event sequence from tracelog emperically seems to 
+// start with the _TRACE_CONTROL_TIME events.
 std::size_t CpuContext::Initialize(std::size_t data_size, void* data) {
   if (IsInitialized() || data_size <= 0 || data == nullptr) {
     return 0;
@@ -49,9 +59,10 @@ std::size_t CpuContext::Initialize(std::size_t data_size, void* data) {
   traceevent_t* current_event = static_cast<traceevent_t*>(data);
   std::size_t event_size_bytes = sizeof(traceevent_t);
   while (!IsInitialized() && remaining_data >= event_size_bytes) {
+
     // Retrieve the CPU id from the event header.
     std::uint32_t current_cpu = _NTO_TRACE_GETCPU(current_event->header);
-    if (current_cpu <= cpu_set_.size()) {
+    if (current_cpu < cpu_set_.size()) {
       // Check if the specified CPU is already initialized.
       if (!(cpu_set_[current_cpu].flags & kClkInitialFlag)) {
         // If we are just using the global clock values then initialize ALL the
@@ -66,34 +77,36 @@ std::size_t CpuContext::Initialize(std::size_t data_size, void* data) {
           cpu_set_[current_cpu].initial_timestamp = current_event->data[0];
         }
       }
-    }
 
-    // Ensure the event is a TIME CONTROL event.
-    std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(current_event->header);
-    std::uint32_t event_id = _NTO_TRACE_GETEVENT(current_event->header);
-    if (event_class == _TRACE_CONTROL_C && event_id == _TRACE_CONTROL_TIME) {
-      // If the most significant bits are not already set then assign them based
-      // on the time control event.
-      if (!(cpu_set_[current_cpu].flags & kClkMsbFlag)) {
-        if (use_global_clk_) {
-          // Since we are using the global clock value set ALL the clocks to the
-          // same MSB.
-          for (size_t cpu_index = 0; cpu_index < cpu_set_.size(); cpu_index++) {
-            cpu_set_[cpu_index].flags |= kClkMsbFlag;
-            cpu_set_[cpu_index].timestamp_msb =
+      // Now check if the event is a _TRACE_CONTROL_TIME event and initialize 
+      // the CPU's timestamp_msb if it is.
+      // Ensure the event is a TIME CONTROL event.
+      std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(current_event->header);
+      std::uint32_t event_id = _NTO_TRACE_GETEVENT(current_event->header);
+      if (event_class == _TRACE_CONTROL_C && event_id == _TRACE_CONTROL_TIME) {
+        // If the most significant bits are not already set then assign them based
+        // on the time control event.
+        if (!(cpu_set_[current_cpu].flags & kClkMsbFlag)) {
+          if (use_global_clk_) {
+            // Since we are using the global clock value set ALL the clocks to the
+            // same MSB.
+            for (size_t cpu_index = 0; cpu_index < cpu_set_.size(); cpu_index++) {
+              cpu_set_[cpu_index].flags |= kClkMsbFlag;
+              cpu_set_[cpu_index].timestamp_msb =
+                  ((uint64_t)current_event->data[1]) << 32u;
+              cpu_set_[cpu_index].initial_timestamp |=
+                  cpu_set_[current_cpu].timestamp_msb;
+              num_cpu_initialized_++;
+            }
+          } else {
+            // Set the specified CPU flags/msb/initial_clk
+            cpu_set_[current_cpu].flags |= kClkMsbFlag;
+            cpu_set_[current_cpu].timestamp_msb =
                 ((uint64_t)current_event->data[1]) << 32u;
-            cpu_set_[cpu_index].initial_timestamp |=
+            cpu_set_[current_cpu].initial_timestamp |=
                 cpu_set_[current_cpu].timestamp_msb;
             num_cpu_initialized_++;
           }
-        } else {
-          // Set the specified CPU flags/msb/initial_clk
-          cpu_set_[current_cpu].flags |= kClkMsbFlag;
-          cpu_set_[current_cpu].timestamp_msb =
-              ((uint64_t)current_event->data[1]) << 32u;
-          cpu_set_[current_cpu].initial_timestamp |=
-              cpu_set_[current_cpu].timestamp_msb;
-          num_cpu_initialized_++;
         }
       }
     }
@@ -121,6 +134,10 @@ std::uint64_t CpuContext::Update(const traceevent_t* event) {
   std::uint32_t event_cpu = _NTO_TRACE_GETCPU(event->header);
   if ((event_class == _TRACE_CONTROL_C) && (event_id == _TRACE_CONTROL_TIME)) {
     cpu_set_[event_cpu].timestamp_msb = ((uint64_t)event->data[1]) << 32u;
+  }
+
+  if (event_cpu >= cpu_set_.size()) {
+    return 0;
   }
 
   return (cpu_set_[event_cpu].timestamp_msb | event->data[0]);
