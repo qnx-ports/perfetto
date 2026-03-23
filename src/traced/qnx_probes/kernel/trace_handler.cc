@@ -580,7 +580,7 @@ int TraceHandler::HandleProcessDestroy(std::uint32_t header,
   (void)timestamp;
   (void)header;
 
-  if (data_size < 1) {
+  if (data_size < 2) {
     return -1;
   }
   std::int32_t pid = data[1];
