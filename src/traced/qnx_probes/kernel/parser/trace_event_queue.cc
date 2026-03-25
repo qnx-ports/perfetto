@@ -26,6 +26,20 @@ TraceEventQueue::TraceEventQueue() = default;
 TraceEventQueue::~TraceEventQueue() = default;
 
 int TraceEventQueue::Init(const std::unique_ptr<CpuContext>& cpu_ctx) {
+  if (!cpu_ctx) {
+      std::cerr << 
+      "Error: attempt to initialize TraceEventQueue with null CPU context." 
+      << std::endl;
+    return -1;
+  }
+
+  std::size_t num_cpus = cpu_ctx->GetNumCpus();
+  if (num_cpus == 0) {
+    std::cerr << "Error: attempt to initialize TraceEventQueue with 0 CPUs" 
+              << std::endl;
+    return -1;
+  }
+
   cpus_latest_events_.resize(cpu_ctx->GetNumCpus());
   for (size_t i = 0; i < cpu_ctx->GetNumCpus(); i++) {
     cpus_latest_events_[i] = cpu_ctx->GetCpuInitialTimestamp(i);
