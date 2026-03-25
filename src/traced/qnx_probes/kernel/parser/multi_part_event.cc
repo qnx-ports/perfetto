@@ -30,6 +30,7 @@ MultiPartEvent::MultiPartEvent()
       is_terminated_(false),
       num_parts_(0),
       multi_part_data_(nullptr),
+      data_capacity_(0),
       timestamp_(0) {}
 
 MultiPartEvent::MultiPartEvent(const traceevent_t* event,
@@ -38,6 +39,7 @@ MultiPartEvent::MultiPartEvent(const traceevent_t* event,
       is_terminated_(false),
       num_parts_(0),
       multi_part_data_(nullptr),
+      data_capacity_(0),
       timestamp_(timestamp) {
   switch (_TRACE_GET_STRUCT(event->header)) {
     case _TRACE_STRUCT_S: {
@@ -50,16 +52,19 @@ MultiPartEvent::MultiPartEvent(const traceevent_t* event,
     case _TRACE_STRUCT_CB: {
       event_ = *event;
       is_terminated_ = false;
-      num_parts_ = 0;
+      num_parts_ = 1;
+      data_capacity_ = kPartsPerStep * kBytesPerPart;
       multi_part_data_ =
-          static_cast<std::uint32_t*>(malloc(kPartsPerStep * kBytesPerPart));
+          static_cast<std::uint32_t*>(malloc(data_capacity_));
       if (multi_part_data_) {
         multi_part_data_[0] = event->data[1];
         multi_part_data_[1] = event->data[2];
-        num_parts_ = 1;
       } else {
-        std::cout << "Warning: unable to alloc multi_part_data segment in ctor" 
-                  << std::endl;
+        data_capacity_ = 0;
+        num_parts_ = 0;
+        std::cerr << 
+          "Error: unable to alloc multi_part_data for new MultiPartEvent"
+          << std::endl;
       }
       break;
     }
@@ -71,22 +76,21 @@ MultiPartEvent::MultiPartEvent(const MultiPartEvent& other)
       is_terminated_(other.is_terminated_),
       num_parts_(other.num_parts_),
       multi_part_data_(nullptr),
+      data_capacity_(other.data_capacity_),
       timestamp_(other.timestamp_) {
-  std::uint32_t bytes_size =
-      other.num_parts_ * sizeof(other.multi_part_data_[0]);
 
-  if (bytes_size > 0 && other.multi_part_data_ != nullptr) {
-    multi_part_data_ = static_cast<std::uint32_t*>(malloc(bytes_size));
-    if (multi_part_data_ == nullptr) {
-      num_parts_ = 0;
-      std::cout << "Warning: unable to alloc multi_part_data in copy ctor" 
-                << std::endl;
-    } else {
+  if (data_capacity_ > 0 && other.multi_part_data_ != nullptr) {
+    std::uint32_t bytes_size = other.num_parts_ * kBytesPerPart;
+    multi_part_data_ = static_cast<std::uint32_t*>(malloc(data_capacity_));
+    if (multi_part_data_) {
       memcpy(multi_part_data_, other.multi_part_data_, bytes_size);
+    } else {
+      data_capacity_ = 0;
+      num_parts_ = 0;
+      std::cerr <<
+        "Error: unable to allocate multi_part_data from copy of MultiPartEvent"
+        << std::endl;
     }
-  } else {
-    num_parts_ = 0;
-    multi_part_data_ = nullptr;
   }
 }
 
@@ -95,8 +99,10 @@ MultiPartEvent::MultiPartEvent(MultiPartEvent&& other)
       is_terminated_(std::move(other.is_terminated_)),
       num_parts_(std::move(other.num_parts_)),
       multi_part_data_(std::move(other.multi_part_data_)),
+      data_capacity_(std::move(other.data_capacity_)),
       timestamp_(other.timestamp_) {
   other.multi_part_data_ = nullptr;
+  other.data_capacity_ = 0;
   other.num_parts_ = 0;
   other.is_terminated_ = false;
 }
@@ -105,6 +111,8 @@ MultiPartEvent::~MultiPartEvent() {
   if (multi_part_data_ != nullptr) {
     free(multi_part_data_);
   }
+  data_capacity_ = 0;
+  num_parts_ = 0;
 }
 
 MultiPartEvent& MultiPartEvent::operator=(const MultiPartEvent& rhs) {
@@ -121,20 +129,20 @@ MultiPartEvent& MultiPartEvent::operator=(const MultiPartEvent& rhs) {
   is_terminated_ = rhs.is_terminated_;
   num_parts_ = rhs.num_parts_;
   timestamp_ = rhs.timestamp_;
+  data_capacity_ = rhs.data_capacity_;
 
-  std::uint32_t bytes_size = rhs.num_parts_ * sizeof(rhs.multi_part_data_[0]);
-
-  if (bytes_size > 0 && rhs.multi_part_data_ != nullptr) {
-    multi_part_data_ = static_cast<std::uint32_t*>(malloc(bytes_size));
-    if (multi_part_data_ == nullptr) {
-      num_parts_ = 0;
-      std::cout << "Warning: unable alloc multi_part_data in copy op" << std::endl;
-    } else {
+  if (data_capacity_ > 0 && rhs.multi_part_data_ != nullptr) {
+    std::uint32_t bytes_size = rhs.num_parts_ * kBytesPerPart;
+    multi_part_data_ = static_cast<std::uint32_t*>(malloc(data_capacity_));
+    if (multi_part_data_) {
       memcpy(multi_part_data_, rhs.multi_part_data_, bytes_size);
+    } else {
+      data_capacity_ = 0;
+      num_parts_ = 0;
+      std::cerr << 
+        "Error: unable to alloc multi_part_data for assignment of MultiPartEvent" 
+        << std::endl;
     }
-  } else {
-    num_parts_ = 0;
-    multi_part_data_ = nullptr;
   }
 
   return *this;
@@ -154,9 +162,11 @@ MultiPartEvent& MultiPartEvent::operator=(MultiPartEvent&& rhs) {
   is_terminated_ = std::move(rhs.is_terminated_);
   num_parts_ = std::move(rhs.num_parts_);
   multi_part_data_ = std::move(rhs.multi_part_data_);
+  data_capacity_ = std::move(rhs.data_capacity_);
   timestamp_ = rhs.timestamp_;
 
   rhs.multi_part_data_ = nullptr;
+  rhs.data_capacity_ = 0;
   rhs.num_parts_ = 0;
   rhs.is_terminated_ = false;
 
@@ -171,15 +181,20 @@ int MultiPartEvent::Append(const traceevent_t* part) {
     return 1;
   }
 
-  // Event matches so see if there is enough space for the data already.
-  if (((num_parts_ + kReservedParts) % kPartsPerStep) == 0) {
-    multi_part_data_ = (std::uint32_t*)realloc(
-        multi_part_data_,
-        ((num_parts_ + kReservedParts + kPartsPerStep) * kBytesPerPart));
-
-    if (multi_part_data_ == nullptr) {
+  // Event matches so see if there is enough space for the data already
+  // and realloc an additional step if needed.
+  std::uint32_t bytes_used = num_parts_ * kBytesPerPart;
+  if ((data_capacity_ - bytes_used) < kBytesPerPart) {
+    std::uint32_t new_data_capacity = data_capacity_ + kBytesPerStep;
+    std::uint32_t* new_data = (std::uint32_t*)
+                              realloc(multi_part_data_, new_data_capacity);
+    if (new_data == nullptr) {
+      std::cerr << "Error: unable to realloc multi_part_data for Append of part" 
+                << std::endl;
       return -1;
     }
+    multi_part_data_ = new_data;
+    data_capacity_ = new_data_capacity;
   }
 
   // Copy the data elements for the new part into the data buffer.
@@ -230,6 +245,11 @@ bool MultiPartEvent::IsPart(const traceevent_t* part) const {
 
   // Check if timestamps match
   if (event_.data[0] != part->data[0]) {
+    return false;
+  }
+
+  // Check that the event is from the same CPU
+  if (_NTO_TRACE_GETCPU(event_.header) != _NTO_TRACE_GETCPU(part->header)) {
     return false;
   }
 
