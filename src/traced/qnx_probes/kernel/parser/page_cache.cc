@@ -18,6 +18,7 @@
 
 #include <algorithm>
 
+
 namespace perfetto {
 namespace qnx {
 
@@ -56,7 +57,7 @@ PageCache::PageCache(std::size_t page_size_chunks,
       mutex_(),
       read_page_available_(),
       write_page_available_(),
-      is_finished_(false),
+      is_finished_{false},
       write_pages_(),
       write_page_(nullptr),
       write_page_offset_(),
@@ -160,7 +161,7 @@ void PageCache::ReleaseChunk() {
 void PageCache::Finish() {
   // If there is a partially completed write_page move it to read_queue.
   // Note this function assumes the writer is no longer active.
-  is_finished_ = true;
+  is_finished_.store(true, std::memory_order_relaxed);
   if (write_page_) {
     PutReadPage(std::move(write_page_));
     write_page_offset_ = 0;
@@ -179,7 +180,7 @@ void PageCache::PutWritePage(std::unique_ptr<Page> page) {
 }
 
 std::unique_ptr<PageCache::Page> PageCache::GetWritePage() {
-  if (is_finished_) {
+  if (is_finished_.load(std::memory_order_relaxed)) {
     return nullptr;
   }
 
@@ -195,8 +196,8 @@ std::unique_ptr<PageCache::Page> PageCache::GetWritePage() {
       }
     }
     write_page_available_.wait(
-        lock, [this] { return !write_pages_.empty() || is_finished_; });
-    if (is_finished_) {
+        lock, [this] { return !write_pages_.empty() || is_finished_.load(std::memory_order_relaxed); });
+    if (is_finished_.load(std::memory_order_relaxed)) {
       return nullptr;
     }
   }
@@ -218,7 +219,7 @@ void PageCache::PutReadPage(std::unique_ptr<Page> page) {
 std::unique_ptr<PageCache::Page> PageCache::GetReadPage() {
   std::unique_lock<std::mutex> lock(mutex_);
   // If the queue is "finished" then we don't want to block for new pages.
-  if (is_finished_) {
+  if (is_finished_.load(std::memory_order_relaxed)) {
     if (!read_pages_.empty()) {
       std::unique_ptr<Page> page = std::move(read_pages_.front());
       read_pages_.pop();
@@ -228,8 +229,8 @@ std::unique_ptr<PageCache::Page> PageCache::GetReadPage() {
   }
 
   read_page_available_.wait(
-      lock, [this] { return !read_pages_.empty() || is_finished_; });
-  if (is_finished_ && read_pages_.empty()) {
+      lock, [this] { return !read_pages_.empty() || is_finished_.load(std::memory_order_relaxed); });
+  if (is_finished_.load(std::memory_order_relaxed) && read_pages_.empty()) {
     return nullptr;
   }
 
