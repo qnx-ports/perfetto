@@ -17,10 +17,12 @@
 #ifndef SRC_TRACED_QNX_PROBES_KERNEL_PARSER_CPU_CONTEXT_H_
 #define SRC_TRACED_QNX_PROBES_KERNEL_PARSER_CPU_CONTEXT_H_
 
+extern "C" {
+#include <sys/trace.h>
+}
+
 #include <cstdint>
 #include <vector>
-
-#include "src/traced/qnx_probes/kernel/parser/multi_part_event.h"
 
 namespace perfetto {
 namespace qnx {
@@ -56,7 +58,7 @@ namespace qnx {
  * over. This happens when a new _TRACE_CONTROL_TIME event is provided. This is
  * handled BEFORE events are inserted into the assembly_queue_ (TraceEventQueue)
  * since the queue holds the event in order by timestamp. Prior to insertion the
- * CPU context is updated and the reconsituted timestamp is generated. 
+ * CPU context is updated and the reconstituted timestamp is generated. 
  */
 class CpuInfo {
  public:

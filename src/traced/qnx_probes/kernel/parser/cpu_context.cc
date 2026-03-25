@@ -132,12 +132,13 @@ std::uint64_t CpuContext::Update(const traceevent_t* event) {
   std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(event->header);
   std::uint32_t event_id = _NTO_TRACE_GETEVENT(event->header);
   std::uint32_t event_cpu = _NTO_TRACE_GETCPU(event->header);
-  if ((event_class == _TRACE_CONTROL_C) && (event_id == _TRACE_CONTROL_TIME)) {
-    cpu_set_[event_cpu].timestamp_msb = ((uint64_t)event->data[1]) << 32u;
-  }
 
   if (event_cpu >= cpu_set_.size()) {
     return 0;
+  }
+
+  if ((event_class == _TRACE_CONTROL_C) && (event_id == _TRACE_CONTROL_TIME)) {
+    cpu_set_[event_cpu].timestamp_msb = ((uint64_t)event->data[1]) << 32u;
   }
 
   return (cpu_set_[event_cpu].timestamp_msb | event->data[0]);
