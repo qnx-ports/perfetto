@@ -24,8 +24,6 @@
 
 #include "perfetto/base/logging.h"
 
-#include "src/traced/qnx_probes/kernel/parser/trace_print.h"
-
 // tracefile header
 #if defined(_TRACE_MK_HK)
 #undef _TRACE_MK_HK
@@ -77,10 +75,10 @@ int TraceDecoder::Decode(std::size_t data_size, void* data) {
   int rc = 0;
   if (data_size > 0 && data != nullptr) {
     switch(state_) {
-      case State::Syspage: { rc = DecodeSyspage(data, data_size); break; }
+      case State::Syspage:    { rc = DecodeSyspage(data, data_size); break; }
       case State::CpuContext: { rc = DecodeCpuContext(data, data_size); break; }
-      case State::Events: { rc = DecodeEvents(data, data_size); break;}
-      default: { rc = buffer_.Append(data, data_size);}
+      case State::Events:     { rc = DecodeEvents(data, data_size); break;}
+      default:                { rc = buffer_.Append(data, data_size);}
     }
   }
 
@@ -90,7 +88,7 @@ int TraceDecoder::Decode(std::size_t data_size, void* data) {
       case State::Header:     { rc = DecodeHeader(); break; }
       case State::Syspage:    { rc = DecodeSyspage(nullptr, 0); break; }
       case State::CpuContext: { rc = DecodeCpuContext(nullptr, 0); break; }
-      default: { return -1; }
+      default:                { return -1; }
     }
   }
   return rc;
@@ -317,6 +315,8 @@ int TraceDecoder::DecodeCpuContext(void* data, std::size_t data_size) {
     buffer_.Truncate(buffer_.Size());
     buffer_.Compact();
   }
+  PERFETTO_DLOG("Migrated data to page cache in DecodeCpuContext %zu bytes", 
+    num_bytes);
 
   // If the context is already initialized then transition to State::Events.
   if (cpu_ctx_->IsInitialized()) {
@@ -350,6 +350,9 @@ int TraceDecoder::DecodeEvents(void* data, std::size_t data_size) {
     page_cache_.Write((std::byte*)data, data_size);
   } else {
     // Migrate data from buffer to the page cache.
+    PERFETTO_DLOG(
+      "Migrated data to page cache in DecodeEvents %zu bytes", 
+      buffer_.Size());
     page_cache_.Write((std::byte*)buffer_.Start(), buffer_.Size());
     buffer_.Truncate(buffer_.Size());
     buffer_.Compact();
@@ -397,7 +400,7 @@ int TraceDecoder::DecodeEvent(traceevent_t* trace_event) {
  * header to be available in a contiguous block of memory between these two
  * addresses. It parses the values and adds them to TraceHeader.
  *
- *  HEADER_BEGIN<prefix><key><postfix><value><prefix><key><postfix><value>...HEADER_END
+ *  HEADER_BEGIN<pre><key><post><val><pre><key><post><val>...HEADER_END
  *  - header_start points to the first character of HEADER_BEGIN
  *  - header_end points to the first character of HEADER_END
  *
@@ -483,7 +486,7 @@ int TraceDecoder::ParseHeaderAttributes(char* header_start, char* header_end) {
         if (result.ec == std::errc()) {
           header_.cycles_per_sec_ = cycles_per_sec;
         } else {
-          std::cerr << "Conversion failed for cycles_per_sec" << std::endl;
+          PERFETTO_ELOG("Conversion failed for cycles_per_sec!");
         }
       } else if (strncmp(attr_name, "CPU_NUM", name_len) == 0) {
         std::size_t cpu_num = 0;
@@ -491,7 +494,7 @@ int TraceDecoder::ParseHeaderAttributes(char* header_start, char* header_end) {
         if (result.ec == std::errc()) {
           header_.cpu_num_ = cpu_num;
         } else {
-          std::cerr << "Conversion failed for cpu_num" << std::endl;
+          PERFETTO_ELOG("Conversion failed for cpu_num");
         }
       } else if (strncmp(attr_name, "SYSNAME", name_len) == 0) {
         header_.sys_name_ = std::string(value, value_len);
@@ -510,7 +513,7 @@ int TraceDecoder::ParseHeaderAttributes(char* header_start, char* header_end) {
         if (result.ec == std::errc()) {
           header_.syspage_len_ = syspage_len;
         } else {
-          std::cerr << "Conversion failed for syspage_len" << std::endl;
+          PERFETTO_ELOG("Conversion failed for syspage_len");
         }
       } else {
         // Error unknown attribute.
@@ -569,6 +572,7 @@ void* TraceDecoder::memfind(const void* b1,
  * PageCache::GetChunk() has read all the available data.
  */
 void TraceDecoder::ProcessPageCache() {
+  PERFETTO_DLOG("ProcessPageCache STARTED");
   // Loop is exited when GetChunk returns nullptr. But processing null once to
   // know when the data should be flushed.
   while (1) {
@@ -576,6 +580,7 @@ void TraceDecoder::ProcessPageCache() {
         reinterpret_cast<traceevent_t*>(page_cache_.GetChunk());
     DecodeEvent(event);
     if (event == nullptr) {
+      PERFETTO_DLOG("ProcessPageCache STOPPED");
       return;
     }
     page_cache_.ReleaseChunk();

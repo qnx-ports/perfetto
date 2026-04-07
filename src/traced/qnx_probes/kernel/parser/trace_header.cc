@@ -23,7 +23,7 @@ namespace qnx {
 
 // Operator overload implementation
 std::ostream& operator<<(std::ostream& os, const TraceHeader& header) {
-  os << "TraceHeader {";
+  os << "{";
   if (header.date_) {
     os << "date: " << *header.date_;
   }

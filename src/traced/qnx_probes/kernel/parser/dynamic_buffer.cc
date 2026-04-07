@@ -21,6 +21,8 @@
 #include <cstring>
 #include <new>
 
+#include "perfetto/base/logging.h"
+
 namespace perfetto {
 namespace qnx {
 
@@ -129,6 +131,8 @@ int DynamicBuffer::Compact() {
   start_ = buffer_;
   end_ = buffer_ + size_;
   capacity_ = size_;
+
+  PERFETTO_DLOG("Compacted dynamic buffer to %zu", capacity_);
   return 0;
 }
 
@@ -212,6 +216,8 @@ bool DynamicBuffer::EnsureCapacity(std::size_t data_size) {
   start_ = buffer_;
   end_ = buffer_ + size_;
   capacity_ = new_capacity;
+
+  PERFETTO_DLOG("Reallocated dynamic buffer to %zu bytes. %zu bytes are used.", capacity_, size_);
 
   return true;
 }

@@ -47,6 +47,8 @@ class TraceParser {
     std::size_t callback_call_count_ = 0;
     std::size_t callback_miss_count_ = 0;
     std::size_t event_parsed_ = 0;
+    std::size_t timestamp_regressions_ = 0;
+    std::size_t cpu_healed_ = 0;
   };
   using Callback = std::function<int(std::uint32_t ev_header,
                                      std::uint64_t ev_time,
@@ -81,7 +83,7 @@ class TraceParser {
     return decoder_.GetTraceHeader();
   }
 
-  inline const TraceParserStats& getTraceStats() const { return stats_; }
+  inline const TraceParserStats& GetTraceStats() const { return stats_; }
 
  private:
   std::array<std::array<Callback, kMaxEvents>, kMaxClasses> event_callbacks_;

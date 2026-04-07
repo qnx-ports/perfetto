@@ -158,7 +158,7 @@ TracePrint::TracePrint(std::uint32_t header,
       data_size_(data_size),
       data_(data) {}
 
-TracePrint::TracePrint(traceevent_t* event)
+TracePrint::TracePrint(const traceevent_t* event)
     : header_(event->header),
       timestamp_(event->data[0]),
       data_size_(2),
@@ -223,6 +223,31 @@ const char* TracePrint::GetStructName(std::uint32_t header) {
   return MSG_STRUCT_TYPES[msg_type_index];
 }
 
+void trace_print_event(std::ostream& os, const traceevent_t* event) {
+  std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(event->header);
+  std::uint32_t event_class_index = event_class >> 10;
+  os << "\"Event\": {"
+     << "\"class\": " << TracePrint::GetClassName(event->header) << ":"
+     << event_class << ":" << event_class_index
+     << ", \"id\": " << TracePrint::GetEventName(event->header) << ":"
+     << _NTO_TRACE_GETEVENT(event->header) 
+     << ", \"cpu\": " << _NTO_TRACE_GETCPU(event->header)
+     << ", \"ts_lsb\": " << std::hex << event->data[0] << std::dec
+     << ", \"data_size\": " << 2 << ", \"data\": [";
+
+  // skit data[0] since it is the timestamp
+  for (size_t i = 1; i < 3; i++) {
+    if (i != 1) {
+      os << ", ";
+    }
+    os << ((std::uint32_t*)event->data)[i];
+  }
+  os << "]"
+     << ", \"struct\": " << TracePrint::GetStructName(event->header)
+     << ", \"header\": " << event->header;
+  os << "}";
+}
+
 std::ostream& operator<<(std::ostream& os, const TracePrint& event) {
   std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(event.header_);
   std::uint32_t event_class_index = event_class >> 10;
@@ -230,7 +255,9 @@ std::ostream& operator<<(std::ostream& os, const TracePrint& event) {
      << "\"class\": " << TracePrint::GetClassName(event.header_) << ":"
      << event_class << ":" << event_class_index
      << ", \"id\": " << TracePrint::GetEventName(event.header_) << ":"
-     << _NTO_TRACE_GETEVENT(event.header_) << ", \"ts\": " << event.timestamp_
+     << _NTO_TRACE_GETEVENT(event.header_) 
+     << ", \"cpu\": " << _NTO_TRACE_GETCPU(event.header_)
+     << ", \"ts_lsb\": " << std::hex << event.timestamp_ << std::dec
      << ", \"data_size\": " << event.data_size_ << ", \"data\": [";
 
   for (size_t i = 0; i < event.data_size_; i++) {
@@ -241,7 +268,8 @@ std::ostream& operator<<(std::ostream& os, const TracePrint& event) {
   }
   os << "]"
      << ", \"struct\": " << TracePrint::GetStructName(event.header_)
-     << ", \"header\": " << event.header_ << "}";
+     << ", \"header\": " << event.header_;
+  os << "}";
 
   return os;
 }

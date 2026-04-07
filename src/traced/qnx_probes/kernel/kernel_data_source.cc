@@ -40,40 +40,39 @@ KernelDataSource::KernelDataSource(TracingSessionID session_id,
       config_(),
       trace_thread_(),
       trace_handler_() {
-  PERFETTO_LOG("KernelDataSource CREATED");
+  PERFETTO_DLOG("KernelDataSource CREATED");
   config_.LoadFromDataSourceConfig(ds_config);
 }
 
 KernelDataSource::~KernelDataSource() {
-  PERFETTO_LOG("KernelDataSource DESTROYED");
   if (trace_thread_.joinable()) {
     if (std::shared_ptr<TraceHandler> trace_handler = trace_handler_.lock()) {
       trace_handler->Stop();
-      PERFETTO_LOG("TraceHandler STOPPED");
     }
     trace_thread_.join();
-    PERFETTO_LOG("KernelDataSource JOINED");
+    PERFETTO_DLOG("KernelDataSource JOINED");
   }
+  PERFETTO_DLOG("KernelDataSource DESTROYED");
 }
 
 void KernelDataSource::Start() {
-  PERFETTO_LOG("KernelDataSource STARTED");
+  PERFETTO_DLOG("KernelDataSource STARTED");
   trace_thread_ = std::thread([this]() { this->Trace(); });
 }
 
 void KernelDataSource::Flush(FlushRequestID, std::function<void()> callback) {
-  PERFETTO_LOG("KernelDataSource FLUSHING");
+//  PERFETTO_LOG("KernelDataSource FLUSHING");
 
   if (std::shared_ptr<TraceHandler> trace_handler = trace_handler_.lock()) {
     trace_handler->Flush(callback);
-    PERFETTO_LOG("KernelDataSource FLUSHED");
+    PERFETTO_DLOG("KernelDataSource FLUSHED");
   } else {
-    PERFETTO_LOG("Unable to flush dead TraceHandler");
+    PERFETTO_ILOG("Unable to flush dead TraceHandler");
   }
 }
 
 void KernelDataSource::Trace() {
-  PERFETTO_LOG("KernelDataSource TRACING");
+  PERFETTO_DLOG("KernelDataSource TRACING");
   // tracelog uses spin locks which require elevated IO privedges
   ThreadCtl(_NTO_TCTL_IO_LEVEL, (void*)(_NTO_IO_LEVEL_1));
 

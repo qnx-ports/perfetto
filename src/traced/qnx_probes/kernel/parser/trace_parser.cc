@@ -16,6 +16,12 @@
 
 #include "src/traced/qnx_probes/kernel/parser/trace_parser.h"
 
+#include <cinttypes>
+#include <sstream>
+
+#include "perfetto/base/logging.h"
+#include "src/traced/qnx_probes/kernel/parser/trace_print.h"
+
 /*
  * some values from sys/trace.h
  * header event id is bits 0 - 9
@@ -279,6 +285,7 @@ int TraceParser::Register(Callback callback,
 }
 
 int TraceParser::Parse(size_t data_size, void* data) {
+
   int rc = decoder_.Decode(data_size, data);
   // An error occurred so return 0 bytes processed
   if (rc < 0) {
@@ -292,6 +299,7 @@ int TraceParser::Parse(size_t data_size, void* data) {
 int TraceParser::Finish() {
   decoder_.Finish();
   stats_.event_parsed_ = decoder_.GetEventsDecoded();
+  stats_.cpu_healed_ = decoder_.GetEventsHealed();
   return 0;
 }
 

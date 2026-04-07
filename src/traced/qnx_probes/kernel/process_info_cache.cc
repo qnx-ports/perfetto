@@ -48,40 +48,40 @@ void ThreadInfo::SetName(const std::string& name) {
   }
 }
 
-void ThreadInfo::Dump() const {
-  std::cout << "ThreadInfo{tid=" << GetId() << ", state=";
+void ThreadInfo::Dump(std::ostream& os) const {
+  os << "ThreadInfo{tid=" << GetId() << ", state=";
 
   switch (GetState()) {
     case ThreadStateEnum::TASK_STATE_CREATED:
-      std::cout << "CREATED";
+      os << "CREATED";
       break;
     case ThreadStateEnum::TASK_STATE_DEAD:
-      std::cout << "DEAD";
+      os << "DEAD";
       break;
     case ThreadStateEnum::TASK_STATE_DESTROYED:
-      std::cout << "DESTROYED";
+      os << "DESTROYED";
       break;
     case ThreadStateEnum::TASK_STATE_INTERRUPTIBLE_SLEEP:
-      std::cout << "INTERRUPTIBLE_SLEEP";
+      os << "INTERRUPTIBLE_SLEEP";
       break;
     case ThreadStateEnum::TASK_STATE_RUNNABLE:
-      std::cout << "RUNNABLE";
+      os << "RUNNABLE";
       break;
     case ThreadStateEnum::TASK_STATE_RUNNING:
-      std::cout << "RUNNING";
+      os << "RUNNING";
       break;
     case ThreadStateEnum::TASK_STATE_STOPPED:
-      std::cout << "STOPPED";
+      os << "STOPPED";
       break;
     case ThreadStateEnum::TASK_STATE_UNINTERRUPTIBLE_SLEEP:
-      std::cout << "UNINTERRUPTIBLE_SLEEP";
+      os << "UNINTERRUPTIBLE_SLEEP";
       break;
     default:
-      std::cout << "UNKNOWN";
+      os << "UNKNOWN";
       break;
   }
 
-  std::cout << ", name=" << GetName() << "}";
+  os << ", name=" << GetName() << "}";
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,18 +206,18 @@ const ThreadInfo& ProcessInfo::GetThread(std::int32_t tid) const {
   return ThreadInfo::kInvalid;
 }
 
-void ProcessInfo::Dump() const {
-  std::cout << "ProcessInfo{pid=" << GetId() << ", ppid=" << GetParentId()
+void ProcessInfo::Dump(std::ostream& os) const {
+  os << "ProcessInfo{pid=" << GetId() << ", ppid=" << GetParentId()
             << ", name=" << GetName() << ", threads[";
 
   auto iter = threads_.begin();
   while (iter != threads_.end()) {
-    std::cout << std::endl;
-    std::cout << "\t";
-    iter->second.Dump();
+    os << std::endl;
+    os << "\t";
+    iter->second.Dump(os);
     iter++;
   }
-  std::cout << "]" << std::endl;
+  os << "]" << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -291,10 +291,10 @@ void ProcessCache::UncacheProcess(std::int32_t pid) {
   }
 }
 
-void ProcessCache::Dump() const {
+void ProcessCache::Dump(std::ostream& os) const {
   auto iter = process_map_.begin();
   while (iter != process_map_.end()) {
-    iter->second.Dump();
+    iter->second.Dump(os);
     iter++;
   }
 }

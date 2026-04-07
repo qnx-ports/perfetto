@@ -18,6 +18,7 @@
 
 #include <algorithm>
 
+#include "perfetto/base/logging.h"
 
 namespace perfetto {
 namespace qnx {
@@ -35,6 +36,9 @@ PageCache::Page::Page(std::size_t size) : data_(), readable_bytes_(0) {
   std::size_t aligned_size = (size + 15) & (~15);
 
   data_ = new (std::nothrow) std::byte[aligned_size];
+  if (data_ == nullptr) {
+    PERFETTO_ELOG("Unable to allocate new page for page cache");
+  }
 }
 
 PageCache::Page::~Page() {
@@ -82,6 +86,7 @@ PageCache::PageCache(std::size_t page_size_chunks,
       // is only one page you will contend for the page but if NO pages are
       // allocated then you will deadlock on the cache.
       write_pages_.push(std::move(page));
+      PERFETTO_DLOG("Created new page_cache page");
     }
   }
 }
@@ -190,6 +195,7 @@ std::unique_ptr<PageCache::Page> PageCache::GetWritePage() {
       std::unique_ptr<Page> page = std::make_unique<Page>(bytes_per_page_);
       if (page) {
         if (page->data_ != nullptr) {
+          PERFETTO_DLOG("Created new page_cache page on the fly");
           num_pages_++;
           return page;
         }

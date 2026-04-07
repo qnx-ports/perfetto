@@ -16,10 +16,14 @@
 
 #include "src/traced/qnx_probes/kernel/parser/cpu_context.h"
 
-#include <errno.h>
 #include <sys/trace.h>
 
+#include <cinttypes>
+#include <cstdlib>
 #include <ctime>
+#include <errno.h>
+
+#include "perfetto/base/logging.h"
 
 namespace perfetto {
 namespace qnx {
@@ -32,6 +36,11 @@ CpuContext::CpuContext(std::size_t num_cpus,
       use_global_clk_(use_global_clk),
       cycles_per_sec_(cycles_per_sec) {
   cpu_set_.resize(num_cpus);
+
+  if (cycles_per_sec_ == 0) {
+    PERFETTO_ELOG("CpuContext initialized with cycles_per_sec of 0. Aborting!"); 
+    abort();
+  }
 }
 
 std::size_t CpuContext::GetNumCpus() const {
@@ -49,7 +58,7 @@ std::size_t CpuContext::GetNumCpus() const {
 // Lastly note that the trace event sequence from tracelog emperically seems to 
 // start with the _TRACE_CONTROL_TIME events.
 std::size_t CpuContext::Initialize(std::size_t data_size, void* data) {
-  if (IsInitialized() || data_size <= 0 || data == nullptr) {
+  if (IsInitialized() || data_size == 0 || data == nullptr) {
     return 0;
   }
 
@@ -84,20 +93,22 @@ std::size_t CpuContext::Initialize(std::size_t data_size, void* data) {
       std::uint32_t event_class = _NTO_TRACE_GETEVENT_C(current_event->header);
       std::uint32_t event_id = _NTO_TRACE_GETEVENT(current_event->header);
       if (event_class == _TRACE_CONTROL_C && event_id == _TRACE_CONTROL_TIME) {
-        // If the most significant bits are not already set then assign them based
-        // on the time control event.
+        // If the most significant bits are not already set then assign them 
+        // based on the time control event. Once the MSB are set we can consider
+        // it as initialized since by definition we will also already have set
+        // the initial timestamp.
         if (!(cpu_set_[current_cpu].flags & kClkMsbFlag)) {
           if (use_global_clk_) {
-            // Since we are using the global clock value set ALL the clocks to the
-            // same MSB.
+            // Since we are using the global clock value set ALL the clocks to 
+            // the same MSB.
             for (size_t cpu_index = 0; cpu_index < cpu_set_.size(); cpu_index++) {
               cpu_set_[cpu_index].flags |= kClkMsbFlag;
               cpu_set_[cpu_index].timestamp_msb =
                   ((uint64_t)current_event->data[1]) << 32u;
               cpu_set_[cpu_index].initial_timestamp |=
-                  cpu_set_[current_cpu].timestamp_msb;
-              num_cpu_initialized_++;
+                  cpu_set_[cpu_index].timestamp_msb;
             }
+            num_cpu_initialized_ = cpu_set_.size();
           } else {
             // Set the specified CPU flags/msb/initial_clk
             cpu_set_[current_cpu].flags |= kClkMsbFlag;
@@ -106,6 +117,8 @@ std::size_t CpuContext::Initialize(std::size_t data_size, void* data) {
             cpu_set_[current_cpu].initial_timestamp |=
                 cpu_set_[current_cpu].timestamp_msb;
             num_cpu_initialized_++;
+            PERFETTO_DLOG("Initialized cpu[%" PRIu32 "].msb=0x%" PRIx64, 
+              current_cpu, cpu_set_[current_cpu].timestamp_msb);
           }
         }
       }
@@ -138,7 +151,14 @@ std::uint64_t CpuContext::Update(const traceevent_t* event) {
   }
 
   if ((event_class == _TRACE_CONTROL_C) && (event_id == _TRACE_CONTROL_TIME)) {
-    cpu_set_[event_cpu].timestamp_msb = ((uint64_t)event->data[1]) << 32u;
+    std::uint64_t event_msb = ((uint64_t)event->data[1]) << 32u;
+    if (event_msb != cpu_set_[event_cpu].timestamp_msb) {
+      cpu_set_[event_cpu].timestamp_msb = event_msb;
+
+      PERFETTO_DLOG("Updated cpu[%" PRIu32 "].msb=0x%" PRIx64, 
+                    event_cpu, cpu_set_[event_cpu].timestamp_msb);
+    }
+    //cpu_set_[event_cpu].timestamp_msb = ((uint64_t)event->data[1]) << 32u;
   }
 
   return (cpu_set_[event_cpu].timestamp_msb | event->data[0]);
@@ -175,9 +195,11 @@ std::uint64_t CpuContext::CalculateEpochNano(
     return 0;
   }
 
+
   // uint64_t will overflow causing incorrect timestamps and cycles_per_sec_
   // isn't large enough to divide by kNanoPerSec So use __int128 to ensure the
   // timestamp doesn't overflow, giving us an exact value in ns since boot.
+  // NOTE: cycles_per_sec is assigned in ctor and ensured not to be 0!
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
   unsigned __int128 timestamp_ns =

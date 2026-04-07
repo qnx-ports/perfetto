@@ -47,8 +47,8 @@ int PERFETTO_EXPORT_ENTRYPOINT QnxProbesMain(int argc, char** argv) {
   bool background = false;
 
   if (tracelog_acquire() == EBUSY) {
-    PERFETTO_LOG(
-        "Failed to acquire tracelog. Please shutdown any other kernel "
+    PERFETTO_ELOG(
+        "Failed to acquire tracelog! Please shutdown any other kernel "
         "traceloggers before starting %s.",
         argv[0]);
     return -1;
@@ -116,6 +116,6 @@ int PERFETTO_EXPORT_ENTRYPOINT QnxProbesMain(int argc, char** argv) {
 }  // namespace perfetto
 
 int main(int argc, char** argv) {
-  std::cout << "traced_qnx_probes" << std::endl;
+//  std::cout << "traced_qnx_probes" << std::endl;
   return perfetto::QnxProbesMain(argc, argv);
 }

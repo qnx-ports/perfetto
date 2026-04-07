@@ -19,8 +19,9 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <string>
+
+#include "perfetto/base/logging.h"
 
 namespace perfetto {
 namespace qnx {
@@ -62,9 +63,7 @@ MultiPartEvent::MultiPartEvent(const traceevent_t* event,
       } else {
         data_capacity_ = 0;
         num_parts_ = 0;
-        std::cerr << 
-          "Error: unable to alloc multi_part_data for new MultiPartEvent"
-          << std::endl;
+        PERFETTO_ELOG("Unable to alloc multi_part_data for new MultiPartEvent");
       }
       break;
     }
@@ -87,9 +86,7 @@ MultiPartEvent::MultiPartEvent(const MultiPartEvent& other)
     } else {
       data_capacity_ = 0;
       num_parts_ = 0;
-      std::cerr <<
-        "Error: unable to allocate multi_part_data from copy of MultiPartEvent"
-        << std::endl;
+      PERFETTO_ELOG("Unable to allocate multi_part_data from copy of MultiPartEvent");
     }
   }
 }
@@ -139,9 +136,7 @@ MultiPartEvent& MultiPartEvent::operator=(const MultiPartEvent& rhs) {
     } else {
       data_capacity_ = 0;
       num_parts_ = 0;
-      std::cerr << 
-        "Error: unable to alloc multi_part_data for assignment of MultiPartEvent" 
-        << std::endl;
+      PERFETTO_ELOG("Unable to alloc multi_part_data for assignment of MultiPartEvent");
     }
   }
 
@@ -189,8 +184,7 @@ int MultiPartEvent::Append(const traceevent_t* part) {
     std::uint32_t* new_data = (std::uint32_t*)
                               realloc(multi_part_data_, new_data_capacity);
     if (new_data == nullptr) {
-      std::cerr << "Error: unable to realloc multi_part_data for Append of part" 
-                << std::endl;
+      PERFETTO_ELOG("Unable to realloc multi_part_data for Append of part");
       return -1;
     }
     multi_part_data_ = new_data;
