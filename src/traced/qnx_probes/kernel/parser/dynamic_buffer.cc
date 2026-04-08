@@ -21,6 +21,8 @@
 #include <cstring>
 #include <new>
 
+#include "perfetto/base/logging.h"
+
 namespace perfetto {
 namespace qnx {
 
@@ -64,7 +66,7 @@ int DynamicBuffer::Append(void* data, std::size_t data_size) {
 }
 
 std::size_t DynamicBuffer::Get(void* data, std::size_t data_size) {
-  if (size_ == 0 || data_size == 0) {
+  if (size_ == 0 || data_size == 0 || data == nullptr) {
     return 0;
   }
   std::size_t bytes_to_read = std::min(data_size, size_);
@@ -81,11 +83,11 @@ std::size_t DynamicBuffer::Get(void* data, std::size_t data_size) {
 }
 
 int DynamicBuffer::Truncate(std::size_t data_size) {
-  if (!buffer_) {
-    return -1;
+  if (data_size == 0) {
+    return 0;
   }
 
-  if (data_size > size_) {
+  if ((buffer_ == nullptr) || (data_size > size_)) {
     return -1;
   }
 
@@ -125,6 +127,8 @@ int DynamicBuffer::Compact() {
   start_ = buffer_;
   end_ = buffer_ + size_;
   capacity_ = size_;
+
+  PERFETTO_DLOG("Compacted dynamic buffer to %zu", capacity_);
   return 0;
 }
 
@@ -149,15 +153,20 @@ std::size_t DynamicBuffer::InitialSize() {
 }
 
 bool DynamicBuffer::IsEmpty() const {
-  return size_ <= 0;
+  return size_ == 0;
 }
 
 bool DynamicBuffer::EnsureCapacity(std::size_t data_size) {
+
+  if (data_size == 0) {
+    return true;
+  }
+
   // If there is no buffer yet that lazily create it.
   if (!buffer_) {
     capacity_ = std::max(initial_size_, data_size);
     buffer_ = new (std::nothrow) char[capacity_];
-    if (!buffer_) {
+    if (buffer_ == nullptr) {
       return false;
     }
     start_ = buffer_;
@@ -166,8 +175,7 @@ bool DynamicBuffer::EnsureCapacity(std::size_t data_size) {
     return true;
   }
 
-  // If the buffer exists check if there is enough space at the end for the new
-  // data
+  // If the buffer exists check for enough space at the end for the new data
   std::size_t free_at_end = buffer_ + capacity_ - end_;
   if (free_at_end >= data_size) {
     return true;
@@ -184,10 +192,12 @@ bool DynamicBuffer::EnsureCapacity(std::size_t data_size) {
     return true;
   }
 
-  // Need more space so reallocate in block of initial_capacity_
+  // Need more space so reallocate in blocks of initial_size_ or 1024 if 
+  // initial_size_ is 0.
   std::size_t new_capacity = capacity_;
+  std::size_t step_size = initial_size_ > 0 ? initial_size_ : data_size;
   while (new_capacity < size_ + data_size) {
-    new_capacity += initial_size_;
+     new_capacity += step_size;
   }
 
   char* new_buffer = new (std::nothrow) char[new_capacity];
@@ -202,6 +212,8 @@ bool DynamicBuffer::EnsureCapacity(std::size_t data_size) {
   start_ = buffer_;
   end_ = buffer_ + size_;
   capacity_ = new_capacity;
+
+  PERFETTO_DLOG("Reallocated dynamic buffer to %zu bytes. %zu bytes are used.", capacity_, size_);
 
   return true;
 }

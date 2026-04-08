@@ -38,6 +38,9 @@ namespace qnx {
  *
  * The queue must be sorted to ensure that events are processed in the correct
  * order.
+ * 
+ * The queue keeps track of the latest event seen from each CPU and ensures that
+ * only events earlier than the min_latest_timestamp are dispatched.
  *
  * When events are released they are released from the head of the queue (FIFO)
  */
@@ -52,7 +55,7 @@ class TraceEventQueue {
   TraceEventQueue& operator=(TraceEventQueue&&) = delete;
 
   int Init(const std::unique_ptr<CpuContext>& cpu_ctx);
-  int InsertEvent(const traceevent_t* event, std::uint64_t timestamp);
+  int InsertEvent(traceevent_t* event, std::uint64_t timestamp);
   const MultiPartEvent* Front() const;
   int ReleaseEvent();
   size_t GetNumEvents() const;
@@ -64,12 +67,16 @@ class TraceEventQueue {
    */
   bool CanDispatch() const;
 
+  inline std::size_t GetNumEventsHealed() const { return num_events_healed_; }
+
  private:
   // multimap is needed as multiple events can have the same ts
   std::multimap<std::uint64_t, MultiPartEvent> event_buffer_{};
   std::vector<std::uint64_t> cpus_latest_events_{};
-  std::uint64_t oldest_latest_event_ =
-      0;  // TODO We need a better name for this :)
+  std::uint64_t min_latest_timestamp_ = 0;
+  std::uint32_t buffer_cpu_ = 0;
+  bool is_buffer_start_ = true;
+  std::size_t num_events_healed_ = 0;
 };
 
 }  // namespace qnx

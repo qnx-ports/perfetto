@@ -26,6 +26,7 @@ extern "C" {
 }
 
 #include <cinttypes>
+#include <cstdint>
 #include <numeric>
 #include <sstream>
 
@@ -146,14 +147,14 @@ TraceHandler::TraceHandler(std::shared_ptr<TraceWriter> writer,
   do {
     rc = tracelog_instance_init(&tracelogger_);
     if (rc) {
-      PERFETTO_LOG("tracelog_instance_init failed(rc=%d): %s", rc,
+      PERFETTO_ELOG("tracelog_instance_init failed(rc=%d): %s", rc,
                    strerror(rc));
       break;
     }
 
     rc = tracelog_acquire();
     if (rc) {
-      PERFETTO_LOG("tracelog_acquire failed(rc=%d): %s", rc, strerror(rc));
+      PERFETTO_ELOG("tracelog_acquire failed(rc=%d): %s", rc, strerror(rc));
       break;
     }
 
@@ -163,19 +164,19 @@ TraceHandler::TraceHandler(std::shared_ptr<TraceWriter> writer,
                               config.num_kbuffers_, persist_kbuffers,
                               reuse_kbuffers);
     if (rc) {
-      PERFETTO_LOG("tracelog_setkbuffers failed(rc=%d): %s", rc, strerror(rc));
+      PERFETTO_ELOG("tracelog_setkbuffers failed(rc=%d): %s", rc, strerror(rc));
       break;
     }
 
     rc = tracelog_setbuffers(tracelogger_, nullptr, config.num_buffers_);
     if (rc) {
-      PERFETTO_LOG("tracelog_setbuffers failed(rc=%d): %s", rc, strerror(rc));
+      PERFETTO_ELOG("tracelog_setbuffers failed(rc=%d): %s", rc, strerror(rc));
       break;
     }
 
     rc = tracelog_setwriter(tracelogger_, tlcb_write, NULL, (void*)(&parser_));
     if (rc) {
-      PERFETTO_LOG("tracelog_setwriter failed(rc=%d): %s", rc, strerror(rc));
+      PERFETTO_ELOG("tracelog_setwriter failed(rc=%d): %s", rc, strerror(rc));
       break;
     }
 
@@ -202,22 +203,22 @@ TraceHandler::TraceHandler(std::shared_ptr<TraceWriter> writer,
     TraceEvent(_NTO_TRACE_ADDEVENT, _NTO_TRACE_CONTROL, _NTO_TRACE_CONTROLTIME);
 
     if (config.wide_events_) {
-      PERFETTO_LOG("Enabled wide tracelog events");
+//      PERFETTO_LOG("Enabled wide tracelog events");
       TraceEvent(_NTO_TRACE_SETALLCLASSESWIDE);
     } else {
-      PERFETTO_LOG("Disabled wide tracelog events");
+//      PERFETTO_LOG("Disabled wide tracelog events");
       TraceEvent(_NTO_TRACE_SETALLCLASSESFAST);
     }
   } while (false);
   if (rc) {
-    PERFETTO_LOG("Initialization failed");
+    PERFETTO_ELOG("Initialization failed");
   }
 
   // Clock Skew is only needed for QNX7.1 as QNX8.0 MONOTONIC_CLOCK is based on
   // ClockCycles().
   CalculateCyclesToMonoClockSkew();
 
-  PERFETTO_LOG("TraceHandler INITIALIZED");
+  PERFETTO_DLOG("TraceHandler INITIALIZED");
 }
 
 TraceHandler::~TraceHandler() {
@@ -227,30 +228,30 @@ TraceHandler::~TraceHandler() {
   if (tracelogger_) {
     rc = tracelog_instance_destroy(tracelogger_);
     if (rc) {
-      PERFETTO_LOG("tracelog_instance_destroy failed(rc=%d): %s", rc,
+      PERFETTO_ELOG("tracelog_instance_destroy failed(rc=%d): %s", rc,
                    strerror(rc));
     }
   }
 
   rc = tracelog_release();
   if (rc) {
-    PERFETTO_LOG("tracelog_release failed(rc=%d): %s", rc, strerror(rc));
+    PERFETTO_ELOG("tracelog_release failed(rc=%d): %s", rc, strerror(rc));
   }
-  PERFETTO_LOG("TraceHandler DESTROYED");
+  PERFETTO_DLOG("TraceHandler DESTROYED");
 }
 
 void TraceHandler::Start() {
   if (tracelogger_ == nullptr) {
-    PERFETTO_LOG("Failed to start TraceHandler: tracelogger is NULL");
+    PERFETTO_ELOG("Failed to start TraceHandler: tracelogger is NULL");
     return;
   }
-  PERFETTO_LOG("TraceHandler STARTED");
+  PERFETTO_DLOG("TraceHandler STARTED");
   tracelog_start(tracelogger_, 1);
 }
 
 void TraceHandler::Stop() {
   if (tracelogger_ == nullptr) {
-    PERFETTO_LOG("Failed to stop TraceHandler: tracelogger is NULL");
+    PERFETTO_ELOG("Failed to stop TraceHandler: tracelogger is NULL");
     return;
   }
 
@@ -262,13 +263,20 @@ void TraceHandler::Stop() {
   // Now flush the parser for any cached events.
   parser_.Finish();
 
-  const auto& stats = parser_.getTraceStats();
-  PERFETTO_LOG("TraceHandler STOPPED");
-  PERFETTO_LOG(
-      "Parser Stats {kernel_events_decoded: %lu, callback_hits: %lu, "
-      "callback_miss: %lu, writer_dropped_packets: %lu}",
-      stats.event_parsed_, stats.callback_call_count_,
-      stats.callback_miss_count_, writer_->drop_count());
+  const auto& stats = parser_.GetTraceStats();
+  std::stringstream ss;
+  ss << "{"
+     << "raw-decoded=" << stats.event_parsed_
+     << ", dispatched=" << stats.callback_call_count_
+     << ", no-callback=" << stats.callback_miss_count_
+     << ", dropped-packets=" << writer_->drop_count()
+#if (__QNX__ >= 800)
+     << ", cpu-healed=" << stats.cpu_healed_
+#endif
+     << "}";
+  PERFETTO_LOG("Trace completed summary %s", ss.str().c_str());
+
+  PERFETTO_DLOG("TraceHandler STOPPED");
 }
 
 void TraceHandler::Flush(std::function<void()> callback) {
@@ -288,13 +296,20 @@ int TraceHandler::HandleSysPageFinished(std::uint32_t header,
   bool use_global_clock = (_SYSPAGE_ENTRY(parser_.GetSysPage(), qtime)->flags &
                            QTIME_FLAG_GLOBAL_CLOCKCYCLES) != 0;
 
-  PERFETTO_LOG("TraceHandler SYSPAGE_PARSED");
-  PERFETTO_LOG(
+  PERFETTO_DLOG("TraceHandler SYSPAGE_PARSED");
+  PERFETTO_DLOG(
       "%s", (use_global_clock) ? "Using global clock" : "Using per CPU clock");
   {
     std::stringstream ss;
     ss << parser_.GetTraceHeader();
-    PERFETTO_LOG("%s", ss.str().c_str());
+    PERFETTO_DLOG("Decoded trace header %s", ss.str().c_str());
+  }
+
+  // Calculate and output the window of LSB role over
+  // MAX_UINT32 / cycles_per_sec = how many sec the lsb can hold
+  if (parser_.GetTraceHeader().cycles_per_sec_.has_value()) {
+    auto lsb_sec = UINT32_MAX / parser_.GetTraceHeader().cycles_per_sec_.value();
+    PERFETTO_DLOG("Calculated event timestamp lsb window as %" PRIu64 " sec", lsb_sec);
   }
 
   return 0;
@@ -660,7 +675,7 @@ void TraceHandler::WriteThreadStatusUpdate(std::int32_t pid,
                                            std::int32_t prio) {
   auto thread = process_info_cache_.GetThread(pid, tid);
   if (thread.GetId() == kInvalidId) {
-    PERFETTO_LOG("Failed too find cached thread with pid=%d tid=%d", pid, tid);
+    PERFETTO_ELOG("Failed too find cached thread with pid=%d tid=%d", pid, tid);
     return;
   }
   /**
@@ -777,7 +792,7 @@ void TraceHandler::CalculateCyclesToMonoClockSkew() {
                    delta_ns + kBootClocKSkewSampleCount);
   boot_clock_skew_ = delta_ns[median_index];
 
-  PERFETTO_LOG(
+  PERFETTO_DLOG(
       "Calculated cycles to monotonic clock skew as %ldns, (avg=%ld) over %u "
       "samples",
       boot_clock_skew_, delta_ns_avg, kBootClocKSkewSampleCount);

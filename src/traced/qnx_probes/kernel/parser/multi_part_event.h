@@ -68,6 +68,7 @@ class MultiPartEvent {
   bool is_terminated_;
   std::uint32_t num_parts_;
   std::uint32_t* multi_part_data_;
+  std::uint32_t data_capacity_;
   std::uint64_t timestamp_;
 
   // In a multi part event, each event is considered a part, each part has two

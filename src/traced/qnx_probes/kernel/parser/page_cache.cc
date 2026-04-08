@@ -18,6 +18,8 @@
 
 #include <algorithm>
 
+#include "perfetto/base/logging.h"
+
 namespace perfetto {
 namespace qnx {
 
@@ -34,6 +36,9 @@ PageCache::Page::Page(std::size_t size) : data_(), readable_bytes_(0) {
   std::size_t aligned_size = (size + 15) & (~15);
 
   data_ = new (std::nothrow) std::byte[aligned_size];
+  if (data_ == nullptr) {
+    PERFETTO_ELOG("Unable to allocate new page for page cache");
+  }
 }
 
 PageCache::Page::~Page() {
@@ -56,7 +61,7 @@ PageCache::PageCache(std::size_t page_size_chunks,
       mutex_(),
       read_page_available_(),
       write_page_available_(),
-      is_finished_(false),
+      is_finished_{false},
       write_pages_(),
       write_page_(nullptr),
       write_page_offset_(),
@@ -81,6 +86,7 @@ PageCache::PageCache(std::size_t page_size_chunks,
       // is only one page you will contend for the page but if NO pages are
       // allocated then you will deadlock on the cache.
       write_pages_.push(std::move(page));
+      PERFETTO_DLOG("Created new page_cache page, num_pages=%zu", write_pages_.size());
     }
   }
 }
@@ -160,7 +166,7 @@ void PageCache::ReleaseChunk() {
 void PageCache::Finish() {
   // If there is a partially completed write_page move it to read_queue.
   // Note this function assumes the writer is no longer active.
-  is_finished_ = true;
+  is_finished_.store(true, std::memory_order_relaxed);
   if (write_page_) {
     PutReadPage(std::move(write_page_));
     write_page_offset_ = 0;
@@ -179,7 +185,7 @@ void PageCache::PutWritePage(std::unique_ptr<Page> page) {
 }
 
 std::unique_ptr<PageCache::Page> PageCache::GetWritePage() {
-  if (is_finished_) {
+  if (is_finished_.load(std::memory_order_relaxed)) {
     return nullptr;
   }
 
@@ -190,13 +196,14 @@ std::unique_ptr<PageCache::Page> PageCache::GetWritePage() {
       if (page) {
         if (page->data_ != nullptr) {
           num_pages_++;
+          PERFETTO_DLOG("Created new page_cache page on the fly, num_pages=%zu", num_pages_);
           return page;
         }
       }
     }
     write_page_available_.wait(
-        lock, [this] { return !write_pages_.empty() || is_finished_; });
-    if (is_finished_) {
+        lock, [this] { return !write_pages_.empty() || is_finished_.load(std::memory_order_relaxed); });
+    if (is_finished_.load(std::memory_order_relaxed)) {
       return nullptr;
     }
   }
@@ -218,7 +225,7 @@ void PageCache::PutReadPage(std::unique_ptr<Page> page) {
 std::unique_ptr<PageCache::Page> PageCache::GetReadPage() {
   std::unique_lock<std::mutex> lock(mutex_);
   // If the queue is "finished" then we don't want to block for new pages.
-  if (is_finished_) {
+  if (is_finished_.load(std::memory_order_relaxed)) {
     if (!read_pages_.empty()) {
       std::unique_ptr<Page> page = std::move(read_pages_.front());
       read_pages_.pop();
@@ -228,8 +235,8 @@ std::unique_ptr<PageCache::Page> PageCache::GetReadPage() {
   }
 
   read_page_available_.wait(
-      lock, [this] { return !read_pages_.empty() || is_finished_; });
-  if (is_finished_ && read_pages_.empty()) {
+      lock, [this] { return !read_pages_.empty() || is_finished_.load(std::memory_order_relaxed); });
+  if (is_finished_.load(std::memory_order_relaxed) && read_pages_.empty()) {
     return nullptr;
   }
 

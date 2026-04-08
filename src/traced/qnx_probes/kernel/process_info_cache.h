@@ -18,6 +18,7 @@
 #define SRC_TRACED_QNX_PROBES_KERNEL_PROCESS_INFO_CACHE_H_
 
 #include <cstdint>
+#include <iostream>
 #include <string>
 #include <unordered_map>
 
@@ -61,7 +62,7 @@ class ThreadInfo {
   void SetCpuId(std::uint32_t cpu_id) { cpu_id_ = cpu_id; }
   std::uint32_t GetCpuId() const { return cpu_id_; }
 
-  void Dump() const;
+  void Dump(std::ostream& os) const;
 
   static const ThreadInfo kInvalid;
 
@@ -95,7 +96,7 @@ class ProcessInfo {
   bool UpdateThread(const ThreadInfo& thread_info);
   void RemoveThread(std::int32_t tid);
   
-  void Dump() const;
+  void Dump(std::ostream& os) const;
 
   static const ProcessInfo kInvalid;
 
@@ -134,7 +135,7 @@ class ProcessCache {
 
   void UncacheThread(std::int32_t pid, std::int32_t tid);
   void UncacheProcess(std::int32_t pid);
-  void Dump() const;
+  void Dump(std::ostream& os) const;
 
  private:
   std::unordered_map<std::int32_t, ProcessInfo> process_map_;

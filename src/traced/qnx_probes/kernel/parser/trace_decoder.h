@@ -93,6 +93,7 @@ class TraceDecoder {
   }
   inline const TraceHeader& GetTraceHeader() const { return header_; }
   inline std::size_t GetEventsDecoded() const { return num_events_decoded_; }
+  inline std::size_t GetEventsHealed() const { return assembly_queue_.GetNumEventsHealed(); }
 
  private:
   enum class State {
@@ -105,8 +106,10 @@ class TraceDecoder {
     Done
   };
 
+  // TODO detect size dynamically based on system
   // 708 * 16 byte chunk = 11328 bytes per page
-  static const std::size_t kNumChunksPerPage = 708;
+//  static const std::size_t kNumChunksPerPage = 708;
+  static const std::size_t kNumChunksPerPage = 1011;
 
   State state_;
   DynamicBuffer buffer_;

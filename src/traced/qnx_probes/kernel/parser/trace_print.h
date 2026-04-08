@@ -28,6 +28,8 @@ extern "C" {
 namespace perfetto {
 namespace qnx {
 
+void trace_print_event(std::ostream& os, const traceevent_t* event);
+
 /**
  * A helper class for pretty printing trace event data.
  */
@@ -37,7 +39,7 @@ class TracePrint {
              std::uint32_t timestamp,
              std::size_t data_size,
              const std::uint32_t* data);
-  TracePrint(traceevent_t* event);
+  TracePrint(const traceevent_t* event);
 
   static const char* GetClassName(std::uint32_t header);
   static const char* GetEventName(std::uint32_t header);

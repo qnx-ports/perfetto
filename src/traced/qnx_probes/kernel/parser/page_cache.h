@@ -17,6 +17,7 @@
 #ifndef SRC_TRACED_QNX_PROBES_KERNEL_PARSER_PAGE_CACHE_H_
 #define SRC_TRACED_QNX_PROBES_KERNEL_PARSER_PAGE_CACHE_H_
 
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <memory>
@@ -85,7 +86,7 @@ class PageCache {
   mutable std::mutex mutex_;
   std::condition_variable read_page_available_;
   std::condition_variable write_page_available_;
-  bool is_finished_;
+  std::atomic<bool> is_finished_;
 
   std::queue<std::unique_ptr<Page>> write_pages_;
   std::unique_ptr<Page> write_page_;

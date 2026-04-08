@@ -130,7 +130,7 @@ void QnxProbesProducer::OnConnect() {
   PERFETTO_DCHECK(state_ == kConnecting);
   state_ = kConnected;
   ResetConnectionBackoff();
-  PERFETTO_LOG("Connected to the service");
+  PERFETTO_LOG("Connected to traced/relay service");
 
   std::array<DataSourceDescriptor, base::ArraySize(kAllDataSources)>
       proto_descs;
@@ -249,7 +249,7 @@ void QnxProbesProducer::StartDataSource(DataSourceInstanceID instance_id,
 }
 
 void QnxProbesProducer::StopDataSource(DataSourceInstanceID id) {
-  PERFETTO_LOG("Producer stop (id=%" PRIu64 ")", id);
+  PERFETTO_DLOG("Producer stop (id=%" PRIu64 ")", id);
   auto it = data_sources_.find(id);
   if (it == data_sources_.end()) {
     // Can happen if SetupDataSource() failed (e.g. ftrace was busy).
