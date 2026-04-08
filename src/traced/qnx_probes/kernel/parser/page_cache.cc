@@ -86,7 +86,7 @@ PageCache::PageCache(std::size_t page_size_chunks,
       // is only one page you will contend for the page but if NO pages are
       // allocated then you will deadlock on the cache.
       write_pages_.push(std::move(page));
-      PERFETTO_DLOG("Created new page_cache page");
+      PERFETTO_DLOG("Created new page_cache page, num_pages=%zu", write_pages_.size());
     }
   }
 }
@@ -195,8 +195,8 @@ std::unique_ptr<PageCache::Page> PageCache::GetWritePage() {
       std::unique_ptr<Page> page = std::make_unique<Page>(bytes_per_page_);
       if (page) {
         if (page->data_ != nullptr) {
-          PERFETTO_DLOG("Created new page_cache page on the fly");
           num_pages_++;
+          PERFETTO_DLOG("Created new page_cache page on the fly, num_pages=%zu", num_pages_);
           return page;
         }
       }
