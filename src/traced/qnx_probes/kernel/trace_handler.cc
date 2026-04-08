@@ -266,11 +266,13 @@ void TraceHandler::Stop() {
   const auto& stats = parser_.GetTraceStats();
   std::stringstream ss;
   ss << "{"
-     << "decoded=" << stats.event_parsed_
-     << ", callback_inv=" << stats.callback_call_count_
+     << "raw-decoded=" << stats.event_parsed_
+     << ", dispatched=" << stats.callback_call_count_
      << ", no-callback=" << stats.callback_miss_count_
      << ", dropped-packets=" << writer_->drop_count()
+#if (__QNX__ >= 800)
      << ", cpu-healed=" << stats.cpu_healed_
+#endif
      << "}";
   PERFETTO_LOG("Trace summary %s", ss.str().c_str());
 

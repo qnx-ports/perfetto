@@ -71,6 +71,9 @@ int TraceEventQueue::InsertEvent(traceevent_t* event,
   auto ev_class = _NTO_TRACE_GETEVENT_C(event->header);
   auto ev_id = _NTO_TRACE_GETEVENT(event->header);
 
+// Check for erronious cpu assignment in event. Due to a QNX 8.0 kernel tracing 
+// bug there can be events that are assigned to the wrong cpu.
+#if (__QNX__ >= 800)
   // If this is the first event following a _TRACE_CONTROL_BUFFER_END event then
   // set the buffer cpu based on this event. 
   // If the event IS a _TRACE_CONTROL_BUFFER_END event then set the flag to 
@@ -86,14 +89,7 @@ int TraceEventQueue::InsertEvent(traceevent_t* event,
     is_buffer_start_= true;
   }
 
-  // Check for spurious event. Due to a kernel tracing bug there can be spurious 
-  // events that are assigned to the wrong cpu.
   if (event_cpu != buffer_cpu_) {
-    // PERFETTO_LOG(
-    //   "Detected event and healed cpu=%" PRIu32 
-    //   " mismatch to buffer cpu=%" PRIu32,
-    //    event_cpu, buffer_cpu_);
-
     // Heal the event cpu by assigning it the value of the buffer_cpu to align
     // with the rest of the events in this buffer and avoid event time
     // regressions. 
@@ -103,6 +99,7 @@ int TraceEventQueue::InsertEvent(traceevent_t* event,
     event_cpu = _NTO_TRACE_GETCPU(event->header);
     num_events_healed_++;
   }
+#endif
 
   switch (_TRACE_GET_STRUCT(event->header)) {
     // If it is the first part (or only part) then it requires a new insertion
