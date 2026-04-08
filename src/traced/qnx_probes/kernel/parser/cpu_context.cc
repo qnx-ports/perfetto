@@ -21,7 +21,7 @@
 #include <cinttypes>
 #include <cstdlib>
 #include <ctime>
-#include <errno.h>
+#include <cerrno>
 
 #include "perfetto/base/logging.h"
 
@@ -38,8 +38,7 @@ CpuContext::CpuContext(std::size_t num_cpus,
   cpu_set_.resize(num_cpus);
 
   if (cycles_per_sec_ == 0) {
-    PERFETTO_ELOG("CpuContext initialized with cycles_per_sec of 0. Aborting!"); 
-    abort();
+    PERFETTO_FATAL("CpuContext initialized with cycles_per_sec of 0. Aborting!"); 
   }
 }
 
@@ -158,7 +157,6 @@ std::uint64_t CpuContext::Update(const traceevent_t* event) {
       PERFETTO_DLOG("Updated cpu[%" PRIu32 "].msb=0x%" PRIx64, 
                     event_cpu, cpu_set_[event_cpu].timestamp_msb);
     }
-    //cpu_set_[event_cpu].timestamp_msb = ((uint64_t)event->data[1]) << 32u;
   }
 
   return (cpu_set_[event_cpu].timestamp_msb | event->data[0]);

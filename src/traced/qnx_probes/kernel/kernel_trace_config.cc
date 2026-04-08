@@ -37,44 +37,36 @@ void KernelTraceConfig::LoadFromDataSourceConfig(
   if (qnx_cfg.has_qnx_kernel_buffers()) {
     num_buffers_ = qnx_cfg.qnx_kernel_buffers();
   }
-  // PERFETTO_LOG("Using config qnx_kernel_buffers=%u", num_buffers_);
   ss << "qnx_kernel_buffers=" << num_buffers_;
 
   if (qnx_cfg.has_qnx_kernel_kbuffers()) {
     num_kbuffers_ = qnx_cfg.qnx_kernel_kbuffers();
   }
-  // PERFETTO_LOG("Using config qnx_kernel_kbuffers=%u", num_kbuffers_);
   ss << ", qnx_kernel_kbuffers=" << num_kbuffers_;
 
   if (qnx_cfg.has_qnx_kernel_wide_events()) {
     wide_events_ = qnx_cfg.qnx_kernel_wide_events();
   }
-  // PERFETTO_LOG("Using config qnx_kernel_wide_events=%s",
-  //              (wide_events_) ? "true" : "false");
   ss << ", qnx_kernel_wide_events=" << ((wide_events_) ? "true" : "false");
 
   if (qnx_cfg.has_qnx_cache_pages()) {
     cache_pages_ = qnx_cfg.qnx_cache_pages();
   }
-  // PERFETTO_LOG("Using config qnx_cache_pages=%u", cache_pages_);
   ss << ", qnx_cache_pages=" << cache_pages_;
 
   if (qnx_cfg.has_qnx_cache_max_pages()) {
     cache_max_pages_ = qnx_cfg.qnx_cache_max_pages();
   }
-  // PERFETTO_LOG("Using config qnx_cache_max_pages=%d", cache_max_pages_);
   ss << ", qnx_cache_max_pages=" << cache_max_pages_;
 
   if (qnx_cfg.has_qnx_trace_buffer_init_bytes()) {
     trace_buffer_init_bytes_ = qnx_cfg.qnx_trace_buffer_init_bytes();
   }
-  // PERFETTO_LOG("Using config qnx_trace_buffer_init_bytes=%d",
-  //              trace_buffer_init_bytes_);
   ss << ", qnx_trace_buffer_init_bytes=" << trace_buffer_init_bytes_;
 
   ss << "}";
 
-  PERFETTO_LOG("New trace using config %s", ss.str().c_str());
+  PERFETTO_LOG("Trace created using %s", ss.str().c_str());
 }
 }  // namespace qnx
 }  // namespace perfetto

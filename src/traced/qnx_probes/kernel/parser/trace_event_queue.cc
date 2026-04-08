@@ -67,7 +67,7 @@ int TraceEventQueue::InsertEvent(traceevent_t* event,
   } 
 
   // The first event in each kernel trace buffer is a _TRACE_CONTROL_TIME event.
-  // Use tha marker to assign the buffer cpu value.
+  // Use that marker to assign the buffer cpu value.
   auto ev_class = _NTO_TRACE_GETEVENT_C(event->header);
   auto ev_id = _NTO_TRACE_GETEVENT(event->header);
 
@@ -128,6 +128,8 @@ int TraceEventQueue::InsertEvent(traceevent_t* event,
       // 2. The latest timestamp only needs to be updated if our current cpu ts
       //    is the same as the oldest. As all other timestamps in
       //    cpu_latest_event must be greater than the current oldest.
+      // NOTE: we will proactively heal invalid cpu events from 8.0 to help 
+      //    ensure that these assumptions hold.
       cpus_latest_events_[event_cpu] = event_ts;
       if (update_latest) {
         min_latest_timestamp_ = *std::min_element(cpus_latest_events_.begin(),

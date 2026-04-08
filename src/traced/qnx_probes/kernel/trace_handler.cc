@@ -274,7 +274,7 @@ void TraceHandler::Stop() {
      << ", cpu-healed=" << stats.cpu_healed_
 #endif
      << "}";
-  PERFETTO_LOG("Trace summary %s", ss.str().c_str());
+  PERFETTO_LOG("Trace completed summary %s", ss.str().c_str());
 
   PERFETTO_DLOG("TraceHandler STOPPED");
 }

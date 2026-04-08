@@ -67,7 +67,7 @@ class TraceEventQueue {
    */
   bool CanDispatch() const;
 
-  std::size_t GetNumEventsHealed() const { return num_events_healed_; }
+  inline std::size_t GetNumEventsHealed() const { return num_events_healed_; }
 
  private:
   // multimap is needed as multiple events can have the same ts

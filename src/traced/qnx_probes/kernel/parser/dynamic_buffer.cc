@@ -87,11 +87,7 @@ int DynamicBuffer::Truncate(std::size_t data_size) {
     return 0;
   }
 
-  if (!buffer_) {
-    return -1;
-  }
-
-  if (data_size > size_) {
+  if ((buffer_ == nullptr) || (data_size > size_)) {
     return -1;
   }
 
@@ -170,7 +166,7 @@ bool DynamicBuffer::EnsureCapacity(std::size_t data_size) {
   if (!buffer_) {
     capacity_ = std::max(initial_size_, data_size);
     buffer_ = new (std::nothrow) char[capacity_];
-    if (!buffer_) {
+    if (buffer_ == nullptr) {
       return false;
     }
     start_ = buffer_;
