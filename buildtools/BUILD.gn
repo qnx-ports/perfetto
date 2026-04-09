@@ -259,7 +259,6 @@ source_set("abseil_cpp") {
     "abseil-cpp/absl/debugging/internal/elf_mem_image.h",
     "abseil-cpp/absl/debugging/internal/examine_stack.cc",
     "abseil-cpp/absl/debugging/internal/examine_stack.h",
-    "abseil-cpp/absl/debugging/internal/stack_consumption.cc",
     "abseil-cpp/absl/debugging/internal/utf8_for_code_point.cc",
     "abseil-cpp/absl/debugging/internal/vdso_support.cc",
     "abseil-cpp/absl/debugging/internal/vdso_support.h",
@@ -552,6 +551,10 @@ source_set("abseil_cpp") {
     "abseil-cpp/absl/algorithm/algorithm.h",
     "abseil-cpp/absl/algorithm/container.h",
   ]
+
+  if (!is_qnx) {
+    sources += [ "abseil-cpp/absl/debugging/internal/stack_consumption.cc" ]  
+  }
 
   if (is_win) {
     sources += [ "abseil-cpp/absl/base/internal/spinlock_win32.inc" ]
@@ -2313,6 +2316,9 @@ if (enable_perfetto_re2) {
     visibility = _buildtools_visibility
     include_dirs = [ "re2" ]
     defines = [ "RE2_USE_ABSL" ]
+
+    # Cover QNX and other Clang/GCC builds
+    cflags = [ "-Wno-alloc-size-larger-than" ]
 
     # On Windows, NULL expands to 0 (not nullptr), which triggers this
     # warning in re2 headers included from our code.
