@@ -10,8 +10,8 @@ It is a production-grade tool that is the default tracing system for the
 ![](docs/images/perfetto-stack.svg)
 
 ## Building for QNX
-Perfetto now supports tracing on QNX 7.1. For details see
-[Perfetto Trace on QNX](src/traced/qnx_probes/README.md).
+Perfetto now supports tracing on QNX 7.1 and 8.0. For details see
+[Perfetto on QNX](docs/data-sources/qnx-probe/qnx-probe-overview.md).
 
 ## Core Components
 
