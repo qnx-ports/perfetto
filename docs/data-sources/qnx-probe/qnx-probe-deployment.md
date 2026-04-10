@@ -45,11 +45,11 @@ For details on creating a configuration file refer to
 ***Copy The Perfetto Components***
 
 ```bash
-scp out/qnx_x64/traced <user>@<target-qnx-system-ip>:/opt/perfetto/bin
-scp out/qnx_x64/traced_relay <user>@<target-qnx-system-ip>:/opt/perfetto/bin
-scp out/qnx_x64/traced_qnx_probes <user>@<target-qnx-system-ip>:/opt/perfetto/bin
-scp out/qnx_x64/perfetto <user>@<target-qnx-system-ip>:/opt/perfetto/bin
-scp out/qnx_x64/libperfetto.so <user>@<target-qnx-system-ip>:/opt/perfetto/lib
+scp out/qnx8.0_x64/traced <user>@<target-qnx-system-ip>:/opt/perfetto/bin
+scp out/qnx8.0_x64/traced_relay <user>@<target-qnx-system-ip>:/opt/perfetto/bin
+scp out/qnx8.0_x64/traced_qnx_probes <user>@<target-qnx-system-ip>:/opt/perfetto/bin
+scp out/qnx8.0_x64/perfetto <user>@<target-qnx-system-ip>:/opt/perfetto/bin
+scp out/qnx8.0_x64/libperfetto.so <user>@<target-qnx-system-ip>:/opt/perfetto/lib
 ```
 
 ## Tracing on a Hypervisor Host/Guest Deployment

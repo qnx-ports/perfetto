@@ -22,13 +22,12 @@ enabling Perfetto to collect and display consolidated tracing data that spans
 both the host/hypervisor and guest systems.
 
 ***traced_qnx_probes*** uses the QNX microkernel's extensive tracing and
-profiling support to collect and convert data into generic (non-OS/Linux
-specific) Perfetto events and sends them into the Perfetto
+profiling support to collect and convert data into generic (OS
+agnostic/non-Linux) Perfetto events and sends them into the Perfetto
 system (e.g., traced) so they can be included in the tracing session.
 
-For example,
-The QNX probe collects information about processes and threads such as their id,
-status, name, etc.
+For example, the QNX probe collects information about processes and threads such
+as their id, status, name, etc.
 
 In addition to the new ***traced_qnx_probes*** component, the QNX Perfetto port
 includes several key Perfetto components used to collect tracing data.
@@ -65,7 +64,7 @@ QNX see [Configuring Perfetto for tracing on QNX](qnx-probe-configuration.md).
 ## Running Perfetto on QNX
 
 For a description of how to deploy and run Perfetto on QNX see
-[Deploying Perfetto on QNX](qnx-probe-deployment.md).
+[Running Perfetto on QNX](qnx-probe-tracing.md).
 
 ## Known Issues
 

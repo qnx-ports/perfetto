@@ -13,7 +13,7 @@ for a detailed description of the Perfetto build system.
 ## Table of Contents
 
 - [Clone the Perfetto project](#clone-the-perfetto-project)
-- [Create a Pefetto build configuration](#create-a-perfetto-build-configuration-for-qnx-targets)
+- [Create a Perfetto build configuration](#create-a-perfetto-build-configuration-for-qnx-targets)
 - [Build Perfetto for QNX](#build-the-perfetto-components-for-qnx)
 - [Deploying and Running Perfetto on QNX](#deploying-perfetto-on-qnx)
 

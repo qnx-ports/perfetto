@@ -4,7 +4,7 @@
 order to capture tracing events that describe what is going on within the target
 system.
 
-The set currently captured by the probe inccludes:
+The set currently captured by the probe includes:
 
 ## Process Information
 
@@ -19,7 +19,7 @@ processes, including:
 
 ## Thread Information
 
-*traced_qnx_probes* also captures information about process threads, include:
+*traced_qnx_probes* also captures information about process threads, including:
 
 - **tid**: Unique identifier of a thread within the system.
 - **name**: Name assigned to the thread.
@@ -29,7 +29,7 @@ processes, including:
 
 ### Thread Status
 
-Thread states are mapped to the following states in perfetto.
+QNX thread states are mapped to the following states in perfetto.
 
 - **CREATED**: Thread has been created but has not started execution.
 - **NAMED**: Thread has been assigned a name.
@@ -102,7 +102,7 @@ Perfetto kernel events.
 |STATE_MQ_RECEIVE      | TASK_STATE_INTERRUPTIBLE_SLEEP    |
 |STATE_SIGSUSPEND      | TASK_STATE_INTERRUPTIBLE_SLEEP    |
 |STATE_SIGWAITINFO     | TASK_STATE_INTERRUPTIBLE_SLEEP    |
-| STATE_NANOSLEEP      | TASK_STATE_INTERRUPTIBLE_SLEEP    |
+|STATE_NANOSLEEP       | TASK_STATE_INTERRUPTIBLE_SLEEP    |
 |STATE_MUTEX           | TASK_STATE_INTERRUPTIBLE_SLEEP    |
 |STATE_CONDVAR         | TASK_STATE_INTERRUPTIBLE_SLEEP    |
 |STATE_JOIN            | TASK_STATE_INTERRUPTIBLE_SLEEP    |
@@ -129,8 +129,8 @@ Perfetto and QNX have different paradigms for tracking thread IDs (tids). The
 Perfetto follows the Linux paradigm in which tids are globally unique on the
 system.
 
-However, in the QNX paradigm threads are tighltly bound to a process and
-tids are only unique within a process. Moreover, tids on QNX are aggressively
+However, in the QNX paradigm threads associated to a process such that tids are
+only unique within a process. Moreover, tids on QNX are aggressively
 recycled.
 
 In order to map QNX tids into perfetto, the QNX process ID (pid) and the QNX tid
@@ -144,10 +144,10 @@ In order to retrieve the QNX --> qnx-tid = perfetto-tid & 0x00000000FFFFFFFF
 
 ## Mapping QNX Thread Death to Perfetto
 
-The QNX system reports a sequence of events during threads death and clean up
-that can be tricky to interpret. This sequence is due the operating system's
+The QNX system reports a sequence of events during thread death and clean up
+that can be tricky to interpret. This sequence is due to the operating system's
 transparent reporting of the thread state event when it is being used to perform
-clean up. There are subtle difference in the sequence of thread death related
+clean up. There are subtle differences in the sequence of thread death related
 trace events on QNX 7.1 and 8.0.
 
 In order to simplify the thread state machine for Perfetto, *traced_qnx_probes*
