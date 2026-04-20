@@ -93,7 +93,7 @@ class TraceDecoder {
   }
   inline const TraceHeader& GetTraceHeader() const { return header_; }
   inline std::size_t GetEventsDecoded() const { return num_events_decoded_; }
-  inline std::size_t GetEventsHealed() const { return assembly_queue_.GetNumEventsHealed(); }
+  inline std::size_t GetNumPrioInheritEvents() const { return assembly_queue_.GetNumPrioInheritEvents(); }
 
  private:
   enum class State {

@@ -2,23 +2,45 @@
 
 This document describes the current known issues with the QNX Perfetto probe.
 
-## QNX 8.0 Events out of order
+## QNX 8.0 Timestamp Regressions
 
-### Status: Active
+**Status**: *Active*
 
-When running on QNX there is an issue the QNX tracelog buffers in which events
-are erroneously assigned the incorrect CPU which results in them occasionally
-appearing out of order. That is, when tagged with the wrong CPU the event
-timestamp seems to have a regression.
-We have introduced logic into
-[traced_qnx_probe](../../../src/traced/qnx_probes/kernel/parser/trace_event_queue.cc) in order
-to detect and heal such events. There are still occasional events that appear as
-regressions or out of order to Perfetto. Occurrences are typically rare and
-traces are still usable and generally intact.
+When running on QNX 8.0 there is a known issue where events occasionally occur
+out of order for a particular CPU. The QNX tracelog callback delivers kernel
+trace buffers that are:
+
+- Uniform in CPU: All the events in a buffer are from the same CPU (with
+exception of priority inheritance events which we detect and ignore).
+- Ordered by time: Events in a buffer are from earliest to latests where the
+event timestamps are always incrementing
+
+For this known issue, traced_qnx_probes occasionally sees events with timestamp
+regressions. We also see, upon import into the Perfetto UI, error with the
+perfetto trace that indicate events out of order. Occurrences are typically rare
+and traces are still usable and generally intact and useful.
+
+## Perfetto Trace Import Errors
+
+**Status**: *Active*
+
+When importing Perfetto traced files that include data from traced_qnx_probes
+into the Perfetto UI we occasionally see reports of *IMPORT ERRORS* with details
+of *generic_task_state_invalid_order*.
+
+## Priority Inheritance Events
+
+**Status**: *Fixed*
+
+When parsing QNX 8.0 tracelog buffers, traced_qnx_probes occasionally sees
+events that are tagged with a different CPU. These are expected events that
+indicate a priority inheritance. Such events are ignored by traced_qnx_probes
+since the associated thread events will carry the priority (in wide mode) and
+the priority inheritance event is redundant.
 
 ## Frame Too Large
 
-### Status: Fixed
+**Status**: *Fixed*
 
 There have been issues with the data sent via relay in which the buffer size is
 being overrun. We used a temporary fix that increased the IPC buffer size to 1Mb
