@@ -71,16 +71,24 @@ int TraceEventQueue::InsertEvent(traceevent_t* event,
   auto ev_class = _NTO_TRACE_GETEVENT_C(event->header);
   auto ev_id = _NTO_TRACE_GETEVENT(event->header);
 
-// Check for erronious cpu assignment in event. Due to a QNX 8.0 kernel tracing 
-// bug there can be events that are assigned to the wrong cpu.
+// Check for, and ignore, priority inheritance events. On QNX when a priority 
+// inheritance occurs it is marked by an event in the CPU buffer of the CPU that
+// triggered the inheritance but which carries the CPU of the thread that is 
+// inheriting the priority. This looks out of place as the event buffer is from
+// one CPU and the event is from another and it can also cause a regression in
+// timing since the event is aligned to the times in the source CPU buffer. 
+// These priority inheritance events should likely be replaced with an formal
+// event type. In our processing, we can ignore these events since the events 
+// related to the thread in question will show the prioity change in the prio
+// field of the event (in wide mode).
 #if (__QNX__ >= 800)
   // If this is the first event following a _TRACE_CONTROL_BUFFER_END event then
-  // set the buffer cpu based on this event. 
+  // set the buffer CPU based on this event. 
   // If the event IS a _TRACE_CONTROL_BUFFER_END event then set the flag to 
   // indicate that the next event will be the first event in the next buffer.
   // NOTE: in practice buffers start with a CONTROL_TIME event not a
   // CONTROL_BUFFER event. So the sequence between buffers is 
-  // BUFFER_END -> CONTROL_TIME -> BUFFER but we need to set the cpu for 
+  // BUFFER_END -> CONTROL_TIME -> BUFFER but we need to set the CPU for 
   // processing right away on whatever event follows the BUFFER_END.
   if (is_buffer_start_) {
     buffer_cpu_ = event_cpu;
@@ -89,15 +97,14 @@ int TraceEventQueue::InsertEvent(traceevent_t* event,
     is_buffer_start_= true;
   }
 
+  // If we detect a priority inheritance event then ignore it.
   if (event_cpu != buffer_cpu_) {
-    // Heal the event cpu by assigning it the value of the buffer_cpu to align
-    // with the rest of the events in this buffer and avoid event time
-    // regressions. 
-    event->header = 
-      (((event->header) & ~0x3f000000) 
-      | (((std::uint32_t)(buffer_cpu_) << 24) & 0x3f000000));
-    event_cpu = _NTO_TRACE_GETCPU(event->header);
-    num_events_healed_++;
+    PERFETTO_DLOG(
+          "Ignoring priority inheritance event, class=%" PRIu32 
+          " id=%" PRIu32, 
+          ev_class, ev_id);
+    num_prio_inherit_events_++;
+    return 0;
   }
 #endif
 

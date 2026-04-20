@@ -67,7 +67,7 @@ class TraceEventQueue {
    */
   bool CanDispatch() const;
 
-  inline std::size_t GetNumEventsHealed() const { return num_events_healed_; }
+  inline std::size_t GetNumPrioInheritEvents() const { return num_prio_inherit_events_; }
 
  private:
   // multimap is needed as multiple events can have the same ts
@@ -76,7 +76,7 @@ class TraceEventQueue {
   std::uint64_t min_latest_timestamp_ = 0;
   std::uint32_t buffer_cpu_ = 0;
   bool is_buffer_start_ = true;
-  std::size_t num_events_healed_ = 0;
+  std::size_t num_prio_inherit_events_ = 0;
 };
 
 }  // namespace qnx

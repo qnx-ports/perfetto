@@ -299,7 +299,7 @@ int TraceParser::Parse(size_t data_size, void* data) {
 int TraceParser::Finish() {
   decoder_.Finish();
   stats_.event_parsed_ = decoder_.GetEventsDecoded();
-  stats_.cpu_healed_ = decoder_.GetEventsHealed();
+  stats_.prio_inheret_events_ = decoder_.GetNumPrioInheritEvents();
   return 0;
 }
 
