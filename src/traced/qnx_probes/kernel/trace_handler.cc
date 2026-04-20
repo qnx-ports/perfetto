@@ -271,7 +271,7 @@ void TraceHandler::Stop() {
      << ", no-callback=" << stats.callback_miss_count_
      << ", dropped-packets=" << writer_->drop_count()
 #if (__QNX__ >= 800)
-     << ", priority-inheretance=" << stats.prio_inheret_events_
+     << ", priority-inheritance=" << stats.prio_inherit_events_
 #endif
      << "}";
   PERFETTO_LOG("Trace completed summary %s", ss.str().c_str());
